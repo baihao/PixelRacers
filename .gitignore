@@ -6,19 +6,71 @@ venv/
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
 .ipynb_checkpoints/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # OS / IDE
 .DS_Store
 .idea/
 .vscode/
+*.swp
+*~
 
-# Local data / caches
-data/
-outputs/
-model_cache/
-*.mcap
+# Local secrets
 .env
 .env.*
+
+# ---------------------------------------------------------------------------
+# Experiment outputs / SfM maps / localization caches
+# (outputs/ alone does NOT match outputs_hfnet, outputs_hfnet_multi_lap_s, …)
+# ---------------------------------------------------------------------------
+outputs/
+outputs_*/
+**/outputs/
+**/outputs_*/
+
+# Cached map / query result dirs (map_bundle, netvlad, loc errors, …)
+**/map_*/
+**/loc_*/
+**/fail_regions/
+
+# Extracted / dumped imagery (large JPEG dumps from mcap)
+camera-date/
+extracted/
+**/extracted/
+data/
+
+# Model weight caches (keep README / small stubs if any)
+model_cache/
+**/models/*.onnx
+**/models/*.pt
+**/models/*.pth
+**/models/*.bin
+
+# Heavy / binary artifacts anywhere
+*.mcap
+*.npz
+*.ply
+*.onnx
+*.pt
+*.pth
+*.bin
+*.h5
+*.ckpt
+
+# Generated plots / decoded frames (reproducible from notebooks)
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.mp4
+*.avi
+
+# Common notebook side-products next to sources (keep small *.json noise summaries)
+*_pred_pose.csv
+*_stamps_ns.npy

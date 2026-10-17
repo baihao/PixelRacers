@@ -1,0 +1,90 @@
+{
+  "source_gt": "/Users/hbai/SchubKI/c0_2026-10-13_22-53-42_camloc/extracted/gt.csv",
+  "method": "start-finish plane crossing (along heading at first GT pose; |across|<15m, dist<40m, debounce>30s)",
+  "recording_start_ns": 1791918157114146050,
+  "recording_end_ns": 1791919351506836679,
+  "recording_duration_s": 1194.392690629,
+  "n_complete_laps": 7,
+  "laps": [
+    {
+      "lap": 1,
+      "complete": true,
+      "start_ns": 1791918157114146050,
+      "end_ns": 1791918444832466282,
+      "duration_s": 287.718320232,
+      "path_m": 3004.580801812176,
+      "start_rel_s": 0.0,
+      "end_rel_s": 287.718320232
+    },
+    {
+      "lap": 2,
+      "complete": true,
+      "start_ns": 1791918444832466282,
+      "end_ns": 1791918612426651869,
+      "duration_s": 167.594185587,
+      "path_m": 2992.9424100895967,
+      "start_rel_s": 287.718320232,
+      "end_rel_s": 455.312505819
+    },
+    {
+      "lap": 3,
+      "complete": true,
+      "start_ns": 1791918612426651869,
+      "end_ns": 1791918736054678423,
+      "duration_s": 123.628026554,
+      "path_m": 3024.05923321151,
+      "start_rel_s": 455.312505819,
+      "end_rel_s": 578.940532373
+    },
+    {
+      "lap": 4,
+      "complete": true,
+      "start_ns": 1791918736054678423,
+      "end_ns": 1791918837334833042,
+      "duration_s": 101.280154619,
+      "path_m": 2978.9897808470996,
+      "start_rel_s": 578.940532373,
+      "end_rel_s": 680.220686992
+    },
+    {
+      "lap": 5,
+      "complete": true,
+      "start_ns": 1791918837334833042,
+      "end_ns": 1791918989608528778,
+      "duration_s": 152.273695736,
+      "path_m": 2977.236959640515,
+      "start_rel_s": 680.220686992,
+      "end_rel_s": 832.494382728
+    },
+    {
+      "lap": 6,
+      "complete": true,
+      "start_ns": 1791918989608528778,
+      "end_ns": 1791919110125677038,
+      "duration_s": 120.51714826,
+      "path_m": 2985.6663002964233,
+      "start_rel_s": 832.494382728,
+      "end_rel_s": 953.011530988
+    },
+    {
+      "lap": 7,
+      "complete": true,
+      "start_ns": 1791919110125677038,
+      "end_ns": 1791919219632923498,
+      "duration_s": 109.50724646,
+      "path_m": 2982.194691302764,
+      "start_rel_s": 953.011530988,
+      "end_rel_s": 1062.518777448
+    },
+    {
+      "lap": 8,
+      "complete": false,
+      "start_ns": 1791919219632923498,
+      "end_ns": 1791919351506836679,
+      "duration_s": 131.873913181,
+      "path_m": 2879.726158687994,
+      "start_rel_s": 1062.518777448,
+      "end_rel_s": 1194.392690629
+    }
+  ]
+}
