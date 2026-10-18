@@ -109,21 +109,29 @@ query-demo 会读其中的 **`mad_sigma`**（不是样本 std）。仓库里已�
 
 烟测可把 `MAP_STRIDE` / `QUERY_STRIDE` 改为 `2`。
 
-### 4.5 Lap3 EKF query-demo
+### 4.5 EKF query-demo（Lap3 / Lap5）
 
-```text
-query-demo/lap3_ekf_query_demo.ipynb
-```
+| Notebook | 评测圈 |
+|----------|--------|
+| `query-demo/lap3_ekf_query_demo.ipynb` | Lap **3**（loc 已由 4.4 生成） |
+| `query-demo/lap5_ekf_query_demo.ipynb` | Lap **5**（地图仍用 Lap2+4；需先 query） |
 
 设计：`query-demo/QUERY_DEMO_EKF.md`。
+
+Lap5 若尚无 `loc_lap5_*`：
+
+```bash
+cd query-demo
+python ensure_lap_query.py --lap 5          # 复用 map_*_lap2+4，只跑 query
+# 或在 lap5 notebook §0 中运行
+```
 
 依赖（先跑 4.3 / 4.4，或使用已有产物）：
 
 - `state-error-estimation/se_step_residual_noise.json`
-- `3d-map-test/outputs_hfnet_multi_lap_s/loc_lap3_{r,fr,rl}/errors.csv`
-- `3d-map-test/outputs_hfnet_multi_lap_s/loc_lap3_fused/obs_error_sigma_vs_s.json`
+- `3d-map-test/outputs_hfnet_multi_lap_s/loc_lap{N}_{r,fr,rl}/errors.csv`
+- `3d-map-test/outputs_hfnet_multi_lap_s/loc_lap3_fused/obs_error_sigma_vs_s.json`（$\sigma(s)$，各圈共用）
 - `extracted/state_estimation.csv`、`gt.csv`、`track_bounds.json`、`map.mcap`
-
 Notebook 流程：
 
 1. 写 `query-demo/config/process_noise.yaml`（MADσ）
@@ -134,20 +142,21 @@ Notebook 流程：
 产物：
 
 ```text
-query-demo/outputs/lap3/
-  gt_lap3.csv
+query-demo/outputs/lap{N}/
+  gt_lap{N}.csv
   se_predict/submission.csv
   ekf_cam/submission.csv
   compare/metrics_official.csv
   compare/metrics_official.png
 ```
 
-官方评测（必须用裁剪后的 Lap3 GT）：
+官方评测（必须用裁剪后的该圈 GT）：
 
 ```bash
 python ../c0_2026-10-13_22-53-42_camloc/tools/evaluate.py \
   query-demo/outputs/lap3/gt_lap3.csv \
   query-demo/outputs/lap3/ekf_cam/submission.csv
+# Lap5 同理替换 lap3 → lap5
 ```
 
 ## 5. 常见问题

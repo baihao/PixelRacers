@@ -1140,15 +1140,16 @@ def run_camera_multi_lap_s_pipeline(
 ) -> Dict:
     """Independent Lap2+Lap4 s-order map + Lap3 query for one camera.
 
-    Caches map in ``map_{cam}_lap2+4/`` and query results in ``loc_lap3_{cam}/``
-    (``errors.csv`` + ``query_meta.json``). Same map fingerprint + query lap
-    skips re-localization unless ``override_query`` / ``override_map``.
+    Caches map in ``map_{cam}_lap2+4/`` and query results in
+    ``loc_lap{query_lap}_{cam}/`` (``errors.csv`` + ``query_meta.json``).
+    Same map fingerprint + query lap skips re-localization unless
+    ``override_query`` / ``override_map``.
     """
     import pandas as pd
 
     cam = camera.strip().lower()
     map_dir = Path(out_root) / f"map_{cam}_lap2+4"
-    loc_dir = Path(out_root) / f"loc_lap3_{cam}"
+    loc_dir = Path(out_root) / f"loc_lap{int(query_lap)}_{cam}"
     map_dir.mkdir(parents=True, exist_ok=True)
     loc_dir.mkdir(parents=True, exist_ok=True)
 

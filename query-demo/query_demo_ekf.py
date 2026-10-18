@@ -496,14 +496,98 @@ class SE2EKF:
 def load_cam_loc_tables(
     cams: Sequence[str] = ("r", "fr", "rl"),
     loc_root: Path = SFM_OUT,
+    *,
+    query_lap: int = 3,
 ) -> Dict[str, pd.DataFrame]:
     tables = {}
     for c in cams:
-        path = loc_root / f"loc_lap3_{c}" / "errors.csv"
+        path = loc_root / f"loc_lap{int(query_lap)}_{c}" / "errors.csv"
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"missing {path}; run SfM query for lap {query_lap} first "
+                f"(map_*_lap2+4 → loc_lap{query_lap}_{{cam}})"
+            )
         df = pd.read_csv(path)
         df["stamp_ns"] = df["stamp_ns"].astype("int64")
         tables[c] = df.sort_values("stamp_ns").reset_index(drop=True)
     return tables
+
+
+def fuse_loc_tables_se2(
+    tables: Dict[str, pd.DataFrame],
+    *,
+    ref_camera: str = "r",
+    gate_xy_m: float = 5.0,
+    gate_yaw_deg: float = 15.0,
+) -> pd.DataFrame:
+    """Offline nearest-stamp se2 fuse (no EKF / no time propagate)."""
+    cams = list(tables.keys())
+    if ref_camera not in tables:
+        ref_camera = cams[0]
+    ref = tables[ref_camera].sort_values("stamp_ns").reset_index(drop=True)
+    aligned = {ref_camera: ref}
+    for c in cams:
+        if c == ref_camera:
+            continue
+        df = tables[c].sort_values("stamp_ns").reset_index(drop=True)
+        ji = align_by_nearest_stamp(
+            ref["stamp_ns"].to_numpy(), df["stamp_ns"].to_numpy()
+        )
+        aligned[c] = df.iloc[ji].reset_index(drop=True)
+
+    rows = []
+    for i in range(len(ref)):
+        poses, weights = [], []
+        src_ok = {}
+        for c in cams:
+            row = aligned[c].iloc[i]
+            ok = bool(row.ok)
+            src_ok[c] = ok
+            if ok and pd.notna(row.pred_x):
+                poses.append(
+                    (float(row.pred_x), float(row.pred_y), float(row.pred_yaw))
+                )
+                e_rep = (
+                    float(row.e_reproj)
+                    if "e_reproj" in row.index and pd.notna(row.e_reproj)
+                    else None
+                )
+                weights.append(
+                    pose_confidence(ok, int(row.n_pnp_inl), e_reproj=e_rep)
+                )
+            else:
+                poses.append(None)
+                weights.append(0.0)
+        fused, info = fuse_se2_weighted(
+            poses, weights, gate_xy_m=gate_xy_m, gate_yaw_deg=gate_yaw_deg
+        )
+        gx = float(ref.iloc[i].gt_x)
+        gy = float(ref.iloc[i].gt_y)
+        gyaw = float(ref.iloc[i].gt_yaw)
+        ok_f = fused is not None
+        if ok_f:
+            px, py, pyaw = fused
+            err_xy = float(np.hypot(px - gx, py - gy))
+        else:
+            px = py = pyaw = err_xy = float("nan")
+        row_out = {
+            "stamp_ns": int(ref.iloc[i].stamp_ns),
+            "ok": ok_f,
+            "gt_x": gx,
+            "gt_y": gy,
+            "gt_yaw": gyaw,
+            "pred_x": px,
+            "pred_y": py,
+            "pred_yaw": pyaw,
+            "err_xy": err_xy,
+            "fuse_mode": info.get("mode"),
+            "n_pnp_inl": int(max(weights)) if weights else 0,
+            "union_ok": bool(any(src_ok.values())),
+        }
+        for c in cams:
+            row_out[f"ok_{c}"] = src_ok[c]
+        rows.append(row_out)
+    return pd.DataFrame(rows)
 
 
 def build_sync_buckets(
@@ -614,7 +698,9 @@ def run_mode_b_ekf(
     t0_ns: int,
     sigma_of_s_fn,
     track_line=None,
+    cams: Sequence[str] = ("r", "fr", "rl"),
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    cams = tuple(cams)
     ekf = SE2EKF(x0, y0, yaw0, cfg)
     ekf.t_ns = int(t0_ns)
     rows = []
@@ -625,6 +711,7 @@ def run_mode_b_ekf(
         fused, finfo = fuse_bucket_at_tlast(
             b,
             se_df,
+            cams=cams,
             gate_xy_m=cfg.gate_xy_m,
             gate_yaw_deg=cfg.gate_yaw_deg,
         )
@@ -654,9 +741,9 @@ def run_mode_b_ekf(
                 "Pxx": float(ekf.P[0, 0]),
                 "Pyy": float(ekf.P[1, 1]),
                 "Pyaw": float(ekf.P[2, 2]),
-                **{f"ok_{c}": finfo.get("cams", {}).get(c, {}).get("ok", False) for c in ("r", "fr", "rl")},
-                **{f"w_{c}": finfo.get("cams", {}).get(c, {}).get("w", 0.0) for c in ("r", "fr", "rl")},
-                **{f"dt_ms_{c}": finfo.get("cams", {}).get(c, {}).get("dt_ms", 0.0) for c in ("r", "fr", "rl")},
+                **{f"ok_{c}": finfo.get("cams", {}).get(c, {}).get("ok", False) for c in cams},
+                **{f"w_{c}": finfo.get("cams", {}).get(c, {}).get("w", 0.0) for c in cams},
+                **{f"dt_ms_{c}": finfo.get("cams", {}).get(c, {}).get("dt_ms", 0.0) for c in cams},
             }
         )
     return pd.DataFrame(rows), pd.DataFrame(sim_rows)

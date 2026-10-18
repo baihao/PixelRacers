@@ -1,20 +1,30 @@
-# query-demo（Lap3 EKF）
+# query-demo（EKF）
 
 设计文档：[`QUERY_DEMO_EKF.md`](QUERY_DEMO_EKF.md)
 
-## Notebook
+## Notebooks
 
-[`lap3_ekf_query_demo.ipynb`](lap3_ekf_query_demo.ipynb) — Kernel：`pixel-racers`
+| Notebook | 圈 | 视觉 loc |
+|----------|----|----------|
+| [`lap3_ekf_query_demo.ipynb`](lap3_ekf_query_demo.ipynb) | Lap 3 | `loc_lap3_*`（multi-lap notebook） |
+| [`lap5_ekf_query_demo.ipynb`](lap5_ekf_query_demo.ipynb) | Lap 5 | `loc_lap5_*`（先 `ensure_lap_query.py --lap 5`） |
 
-流程：
+Kernel：`pixel-racers`。地图均为 Lap2+4（`map_*_lap2+4`）。
 
-1. 从 `state-error-estimation/se_step_residual_noise.json` 写 `config/process_noise.yaml`（MADσ）
-2. **Mode A** 纯 SE 航位 → `outputs/lap3/se_predict/`
-3. **Mode B** EKF + r/fr/rl sync/外推/se2 + \(R(s)\) → `outputs/lap3/ekf_cam/`
-4. 对比 metrics / 轨迹 / err_vs_s → `outputs/lap3/compare/`
+## Lap5 前置 query
 
-视觉观测默认复用 `3d-map-test/outputs_hfnet_multi_lap_s/loc_lap3_{r,fr,rl}`（与 multi-lap notebook 同一 SfM query）。
+```bash
+cd query-demo
+python ensure_lap_query.py --lap 5    # 复用地图，只跑 r/fr/rl query（较慢）
+```
 
-评测使用裁剪后的 `outputs/lap3/gt_lap3.csv`（整段 GT 会导致 coverage 虚低）。
+## 流程（两 notebook 相同）
 
-核心库：[`query_demo_ekf.py`](query_demo_ekf.py)
+1. 写 `config/process_noise.yaml`（MADσ）
+2. **Mode A** `se_predict` → `outputs/lap{N}/se_predict/`
+3. **Mode B** `ekf_cam` → `outputs/lap{N}/ekf_cam/`
+4. 对比 `se_predict` / `fused_se2` / `ekf_cam` → `outputs/lap{N}/compare/`
+
+评测用裁剪 GT：`outputs/lap{N}/gt_lap{N}.csv`。
+
+核心库：[`query_demo_ekf.py`](query_demo_ekf.py)、[`ensure_lap_query.py`](ensure_lap_query.py)
