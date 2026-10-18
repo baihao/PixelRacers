@@ -1,116 +1,116 @@
-# PixelRacers 摄像头定位 — 5 页 PPT 内容说明
+# PixelRacers Camera Localization — 5-Page PPT Content Brief
 
-> 用途：先用本 MD 定稿每页文案、公式、图表与数据来源，再据此做 PPT。  
-> 数据来源：`paper/1812.03506v2.pdf`、`3d-map-test/`、`odometry/`、`state-error-estimation/`、`query-demo/`。  
-> 评测圈默认：**Lap3**（建图用 Lap2 / Lap2+4）；EKF 官方分：**Lap5–7**（fr+rl）。
-
----
-
-## 全局版式建议
-
-| 项 | 建议 |
-|---|---|
-| 页数 | **5 页**（原理 / 相机实验 / 运动与误差 / EKF / 改进） |
-| 风格 | 深色赛道氛围或浅色工程风均可；每页 **1 主标题 + 1 副句**，避免卡片堆叠 |
-| 字体 | 标题用有辨识度的无衬线；公式用 LaTeX 渲染后贴图 |
-| 图源 | 优先用仓库已有 png（路径见各页「建议插图」） |
+> Purpose: Finalize copy, formulas, figures, and data sources per slide in this MD first, then build the PPT.  
+> Data sources: `paper/1812.03506v2.pdf`, `3d-map-test/`, `odometry/`, `state-error-estimation/`, `query-demo/`.  
+> Default eval lap: **Lap3** (mapping on Lap2 / Lap2+4); official EKF scores: **Lap5–7** (fr+rl).
 
 ---
 
-# 第 1 页｜基于摄像头 stream 的定位算法详解
+## Global Layout Suggestions
 
-## 标题
-**分层视觉定位：从全局检索到 6-DoF 位姿**
+| Item | Suggestion |
+|---|---|
+| Page count | **5 pages** (principles / camera experiments / motion & error / EKF / improvements) |
+| Style | Dark track atmosphere or light engineering theme; each slide **1 main title + 1 tagline**, avoid card stacks |
+| Fonts | Distinct sans-serif for titles; render formulas in LaTeX and paste as images |
+| Figures | Prefer existing repo PNGs (paths under each slide’s “Suggested figures”) |
 
-副标题：HF-Net 层级定位（Sarlin et al., arXiv:1812.03506）与本项目单相机 SfM 地图实现
+---
 
-## 本页要讲清楚的故事（口述提纲）
+# Page 1 | Camera Stream Localization Algorithm
 
-1. **问题**：仅用车载多路相机 JPEG stream（~10 Hz），估计 `base_link` 在 `map` 下的 \((x,y,\psi)\)。  
-2. **经典解法（论文）**：粗到细（Coarse-to-Fine）层级定位，而非直接对全库做稠密匹配。  
-3. **本车约束**：标定与安装下 **不宜双目**；改为 **每相机独立 SfM 地图 + 在线 query**。
+## Title
+**Hierarchical Visual Localization: Global Retrieval to 6-DoF Pose**
 
-## 正文块 A — 论文原理（1812.03506）
+Subtitle: HF-Net hierarchical localization (Sarlin et al., arXiv:1812.03506) and this project’s per-camera SfM map implementation
 
-论文标题：**From Coarse to Fine: Robust Hierarchical Localization at Large Scale**（HF-Net）。
+## Story to tell (talking points)
 
-**流水线（板书用）：**
+1. **Problem**: From onboard multi-camera JPEG streams (~10 Hz), estimate `base_link` \((x,y,\psi)\) in `map`.  
+2. **Classic approach (paper)**: Coarse-to-fine hierarchical localization, not dense match against the full database.  
+3. **Vehicle constraints**: Under calibration and mounting, **stereo is not viable**; use **per-camera independent SfM maps + online query**.
+
+## Block A — Paper (1812.03506)
+
+Paper title: **From Coarse to Fine: Robust Hierarchical Localization at Large Scale** (HF-Net).
+
+**Pipeline (for slides):**
 
 ```text
-Query 图像
-  → (1) 全局描述子（NetVLAD / 全局特征）→ 在地图关键帧库中 Top-K 检索
-  → (2) 局部特征检测与描述（SuperPoint / HF-Net local）
-  → (3) 与候选关键帧做 mutual NN 匹配
-  → (4) 2D–3D 对应 + PnP（+ RANSAC）→ 相机位姿
-  → (5) 外参变换到 base_link → (x, y, yaw)
+Query image
+  → (1) Global descriptor (NetVLAD / global feature) → Top-K retrieval in map keyframe DB
+  → (2) Local feature detect & describe (SuperPoint / HF-Net local)
+  → (3) Mutual NN match with candidate keyframes
+  → (4) 2D–3D correspondences + PnP (+ RANSAC) → camera pose
+  → (5) Extrinsic transform to base_link → (x, y, yaw)
 ```
 
-**为何分层：**  
-大规模场景下，直接全库局部匹配不可行；全局检索把搜索空间压到少数关键帧，再在局部做精确几何求解，兼得鲁棒性与效率。
+**Why hierarchical:**  
+At large scale, full-database local matching is infeasible; global retrieval shrinks search to a few keyframes, then precise geometry locally—robustness and efficiency.
 
-**与本项目的对应实现（`3d-map-test/sfm_hfnet*.py` / notebook）：**
+**Mapping to PixelRacers (`3d-map-test/sfm_hfnet*.py` / notebook):**
 
-| 论文步骤 | PixelRacers 实现 |
+| Paper step | PixelRacers implementation |
 |---|---|
-| 全局检索 | NetVLAD top-K（邻域可用 racing-line \(s\) 排序 / arc 邻域） |
-| 局部特征 | HF-Net ONNX 或 `sp_nv_nn`（MPS） |
-| 匹配 | mutual NN + 比率检验 |
-| 几何 | OpenCV PnP + inlier 统计 |
-| 地图 | 离线对选定圈次做 SfM / 三角化，缓存 `map_{cam}_lap*/map_bundle.npz` |
+| Global retrieval | NetVLAD top-K (neighborhood may use racing-line \(s\) order / arc neighborhood) |
+| Local features | HF-Net ONNX or `sp_nv_nn` (MPS) |
+| Matching | mutual NN + ratio test |
+| Geometry | OpenCV PnP + inlier stats |
+| Map | Offline SfM / triangulation on selected laps, cache `map_{cam}_lap*/map_bundle.npz` |
 
-## 正文块 B — 本项目为何不用双目、而用「每相机独立 SfM」
+## Block B — Why Not Stereo; Per-Camera Independent SfM
 
-**标定与安装事实（写入 PPT 要点）：**
+**Calibration and mounting facts (PPT bullets):**
 
-- 七路相机中，**相对更可信的是 `fl, fr, r, rl`**（其余侧向相机标定偏差更大）。  
-- 即便这几路：**内参、朝向、焦距差异大**（如 `fl`/`fr` 窄视场焦距差异显著），**立体基线与外参不足以支撑稳定双目深度 / 立体 VO**。  
-- `fl` 与 `fr` 画面高度重叠，但 `fl` 视场更窄 → 可检出特征更少。
+- Among seven cameras, **`fl, fr, r, rl` are relatively trustworthy** (other side cameras have larger calibration bias).  
+- Even for these: **intrinsics, orientation, focal length differ strongly** (e.g. `fl`/`fr` narrow FOV focal length gap), **stereo baseline and extrinsics do not support stable stereo depth / stereo VO**.  
+- `fl` and `fr` overlap heavily, but `fl` is narrower FOV → fewer detectable features.
 
-**因此采用的架构：**
+**Architecture adopted:**
 
 ```text
-离线（每相机独立）:
-  图像序列_c + GT pose  →  SfM / 3D landmarks  →  map_c
+Offline (per camera):
+  image sequence_c + GT pose  →  SfM / 3D landmarks  →  map_c
 
-在线（每相机独立 query）:
-  当前帧_c  →  对 map_c 做层级定位  →  pose_c
-  （多相机再做 SE(2) 融合 / EKF，见第 2、4 页）
+Online (per camera query):
+  current frame_c  →  hierarchical localize on map_c  →  pose_c
+  (multi-camera SE(2) fusion / EKF on pages 2 & 4)
 ```
 
-要点一句话：**不把多相机当立体对，而把每路相机当成「带自己地图的单目定位传感器」。**
+One-liner: **Do not treat multi-camera as stereo pairs; each stream is a “monocular localization sensor with its own map”.**
 
-## 建议插图
+## Suggested figures
 
-| 位置 | 内容 |
+| Position | Content |
 |---|---|
-| 左上 | 论文式 Coarse→Fine 流程图（自制） |
-| 右上 | 车端相机布局示意（标出 fl/fr/r/rl） |
-| 底部 | 「独立 map_c」三栏示意：fr / r / rl 各一张 query 与轨迹片段 |
+| Top-left | Paper-style Coarse→Fine flow (custom) |
+| Top-right | Vehicle camera layout (mark fl/fr/r/rl) |
+| Bottom | “Independent map_c” three-column: fr / r / rl query + trajectory snippet each |
 
-## 页脚来源
+## Footer sources
 `paper/1812.03506v2.pdf` · `PixelRacers/3d-map-test/`
 
 ---
 
-# 第 2 页｜定位情况分析与摄像头选择
+# Page 2 | Localization Analysis and Camera Selection
 
-## 标题
-**选哪些相机？单圈建图 vs 双圈建图？如何融合？**
+## Title
+**Which Cameras? Single-Lap vs Dual-Lap Mapping? How to Fuse?**
 
-副标题：Lap3 query · 地图 Lap2 vs Lap2+4 · 单相机 vs se2 融合
+Subtitle: Lap3 query · map Lap2 vs Lap2+4 · single camera vs se2 fusion
 
-## 正文块 A — 相机筛选逻辑
+## Block A — Camera selection logic
 
-1. 候选集：`fl, fr, r, rl`（标定相对可靠）。  
-2. **`fl` 剔除**：与 `fr` 场景高度相似，但视场窄、特征点更少 → 性价比低。  
-3. **实验三相机：`fr, r, rl`**（与 `sfm_hfnet_r_lap2_lap4_s_order_lap3_loc.ipynb` 一致）。
+1. Candidates: `fl, fr, r, rl` (relatively reliable calibration).  
+2. **Drop `fl`**: highly similar scene to `fr`, but narrower FOV, fewer features → poor cost/benefit.  
+3. **Experiment trio: `fr, r, rl`** (same as `sfm_hfnet_r_lap2_lap4_s_order_lap3_loc.ipynb`).
 
-## 正文块 B — 建图策略对比（Lap2-only vs Lap2+4）
+## Block B — Mapping strategy (Lap2-only vs Lap2+4)
 
-评测：**同一 Lap3 query**。  
-对照 run：`lap2_time`（仅第二圈建图） vs `lap2+4_s`（第二圈+第四圈、按 \(s\) 序建图）。
+Eval: **same Lap3 query**.  
+Compare runs: `lap2_time` (lap 2 only) vs `lap2+4_s` (laps 2+4, \(s\)-ordered mapping).
 
-**官方风格 metrics（成功帧上的位置 RMSE；括号内 success rate）：**
+**Official-style metrics (position RMSE on successful frames; success rate in parentheses):**
 
 | Camera | Lap2-only A-RMSE [m] | success | Lap2+4 + s-order A-RMSE [m] | success |
 |---|---:|---:|---:|---:|
@@ -118,20 +118,20 @@ Query 图像
 | **fr** | 7.65 | 72.9% | **4.16** | **90.4%** |
 | **rl** | 18.59 | 56.7% | **7.42** | **72.2%** |
 
-**结论（写在图注下）：** 多圈地图 + racing-line \(s\) 邻域显著降低 RMSE、提高成功率；后续一律用 **`map_*_lap2+4`**。
+**Conclusion (under figure caption):** Multi-lap map + racing-line \(s\) neighborhood cuts RMSE and raises success; thereafter always **`map_*_lap2+4`**.
 
-## 正文块 C — 三相机融合算法（简述）
+## Block C — Three-camera fusion (brief)
 
-对齐到同一 query 时间轴后：
+After alignment to the same query timeline:
 
-1. 每路得到 \(\hat{z}_c=(x_c,y_c,\psi_c)\) 与置信权重  
-   \(\omega_c \propto \mathbf{1}[\mathrm{ok}_c]\cdot n_{\mathrm{inl},c}\cdot e^{-\bar{e}_{\mathrm{reproj}}/\sigma}\)。  
-2. **`fuse_se2_weighted`**：在 SE(2) 上按 \(\omega\) 加权融合；门控 \(\Delta xy\le 5\,\mathrm{m}\)、\(\Delta\psi\le 15^\circ\)。  
-3. 对照：**hard** = 只取 \(\omega\) 最大一路。
+1. Each stream yields \(\hat{z}_c=(x_c,y_c,\psi_c)\) and confidence weight  
+   \(\omega_c \propto \mathbf{1}[\mathrm{ok}_c]\cdot n_{\mathrm{inl},c}\cdot e^{-\bar{e}_{\mathrm{reproj}}/\sigma}\).  
+2. **`fuse_se2_weighted`**: SE(2) weighted fusion by \(\omega\); gate \(\Delta xy\le 5\,\mathrm{m}\), \(\Delta\psi\le 15^\circ\).  
+3. Baseline: **hard** = take max-\(\omega\) camera only.
 
-## 正文块 D — 单相机 vs 融合（Lap3，map=lap2+4）
+## Block D — Single camera vs fusion (Lap3, map=lap2+4)
 
-| 方法 | success | pos RMSE [m] | within 1 m（相对成功帧） | within 1 m（相对全部 query） |
+| Method | success | pos RMSE [m] | within 1 m (successful frames) | within 1 m (all query frames) |
 |---|---:|---:|---:|---:|
 | r | 69.4% | 2.89 | 58.3% | 40.5% |
 | fr | 90.4% | 4.16 | 72.2% | 65.3% |
@@ -139,65 +139,65 @@ Query 图像
 | **fused_se2** | **96.4%** | **4.42** | **75.4%** | **72.7%** |
 | fused_hard | 96.4% | 4.45 | 73.7% | 71.1% |
 
-**解读：**  
-- 融合把 **coverage/成功率** 拉到 ~96%，整体 within-1m（相对全部帧）明显好于任一路。  
-- RMSE 介于最好单路与最差单路之间：融合优先「更常有解 + 抑制离群」，而非单纯压低已成功帧的 RMSE。
+**Interpretation:**  
+- Fusion lifts **coverage/success** to ~96%; overall within-1m (all frames) clearly beats any single stream.  
+- RMSE sits between best and worst single camera: fusion prioritizes “more often solved + outlier suppression”, not only minimizing RMSE on already-successful frames.
 
-## 建议插图（本页必须有轨迹）
+## Suggested figures (trajectories required)
 
-| 图 | 路径 |
+| Figure | Path |
 |---|---|
-| 单相机轨迹 | `3d-map-test/outputs_hfnet_multi_lap_s/loc_lap3_{r,fr,rl}/traj_vs_gt.png` |
-| 融合轨迹 | `.../loc_lap3_fused/traj_fused_se2.png` |
-| Lap2 vs Lap2+4 柱状图 | notebook 导出的 compare 图 / `metrics_official_compare.csv` 重画 |
-| 单路 vs 融合柱状图 | `.../loc_lap3_fused/metrics_fuse_compare.png` |
-| 误差–里程 | `.../loc_lap3_fused/err_vs_s_fused_se2.png` |
+| Single-camera trajectories | `3d-map-test/outputs_hfnet_multi_lap_s/loc_lap3_{r,fr,rl}/traj_vs_gt.png` |
+| Fused trajectory | `.../loc_lap3_fused/traj_fused_se2.png` |
+| Lap2 vs Lap2+4 bar chart | notebook export compare / redraw from `metrics_official_compare.csv` |
+| Single vs fusion bar chart | `.../loc_lap3_fused/metrics_fuse_compare.png` |
+| Error vs distance | `.../loc_lap3_fused/err_vs_s_fused_se2.png` |
 
-## 页脚来源
+## Footer sources
 `sfm_hfnet_r_lap2_lap4_s_order_lap3_loc.ipynb` · `outputs_hfnet_multi_lap_s/`
 
 ---
 
-# 第 3 页｜运动预测误差 × 图像定位误差（\(s\)）
+# Page 3 | Motion Prediction Error × Image Localization Error (\(s\))
 
-## 标题
-**两套不确定度：动力学航位 vs 视觉定位**
+## Title
+**Two Uncertainty Sources: Dynamic Dead Reckoning vs Visual Localization**
 
-副标题：为何要「用实验」标定视觉噪声 —— 特征检测/匹配误差难以解析建模
+Subtitle: Why visual noise must be calibrated experimentally — feature detect/match error is hard to model analytically
 
-## 正文块 A — 动力学位置预测（参考 `odometry/`）
+## Block A — Dynamic position prediction (see `odometry/`)
 
-**输入：** `state_estimation` 的 \(v_x,v_y,a_x,a_y,\omega_z\)（**不用** SE 的 \(x,y\) 当观测；仅首帧 pose 可初始化）。
+**Input:** `state_estimation` \(v_x,v_y,a_x,a_y,\omega_z\) (**do not** use SE \(x,y\) as observations; first-frame pose may initialize).
 
-**积分（body → map）：**
+**Integration (body → map):**
 
 \[
 \Delta \mathbf{p}_{\mathrm{body}} = \mathbf{v}\,\Delta t + \tfrac12 \mathbf{a}\,\Delta t^2,\quad
 \psi \leftarrow \psi + \omega_z\Delta t
 \]
 
-位移用区间中点航向旋到 `map`；每步用测量 \(\mathbf{v}\) **重置速度**，避免 \(a\) 双重积分发散。
+Rotate displacement to `map` with mid-interval heading; **reset velocity** with measured \(\mathbf{v}\) each step to avoid \(a\) double-integration blow-up.
 
-**实验量级（Lap2、以 FL stamp 采样的航位示例，`lap2_velocity_odometry.ipynb`）：**
+**Experimental scale (Lap2 dead reckoning sampled at FL stamp, `lap2_velocity_odometry.ipynb`):**
 
-| 模式 | xy median [m] | xy p95 [m] | 终点误差 [m] |
+| Mode | xy median [m] | xy p95 [m] | endpoint error [m] |
 |---|---:|---:|---:|
 | \(v\) only | ≈ 8.37 | ≈ 22.9 | ≈ 15.7 |
 | \(v+a\) | ≈ 8.26 | ≈ 23.0 | ≈ 15.7 |
 
-**结论：** 纯航位在一圈尺度上会漂到 **数米～十余米**，必须靠视觉修正；航位适合做 **高频预测**，不适合单独当最终定位。
+**Conclusion:** Pure dead reckoning drifts to **several to ~10+ meters** over a lap; vision correction is required; dead reckoning suits **high-rate prediction**, not standalone final localization.
 
-## 正文块 B — Motion 逐步噪声（参考 `state-error-estimation/`）
+## Block B — Motion step noise (see `state-error-estimation/`)
 
-对 SE 上报量与 pose 有限差分做残差，用稳健统计：
+Residuals between SE reports and pose finite differences; robust stats:
 
 \[
 \mathrm{MAD}\sigma = 1.4826 \cdot \mathrm{median}\big(|r-\mathrm{median}(r)|\big)
 \]
 
-写入 EKF 过程噪声的锚点（全行程）：
+EKF process noise anchors (full lap):
 
-| 通道 | MADσ | 单位 |
+| Channel | MADσ | Unit |
 |---|---:|---|
 | \(\sigma_{v_x}\) | 0.073 | m/s |
 | \(\sigma_{v_y}\) | 0.020 | m/s |
@@ -205,67 +205,67 @@ Query 图像
 | \(\sigma_{a_y}\) | 8.63 | m/s² |
 | \(\sigma_{\omega_z}\) | 0.0031 | rad/s |
 
-建议插图：`state-error-estimation/se_step_residuals_vs_gaussian.png`、`se_step_residuals_qq.png`。
+Suggested figures: `state-error-estimation/se_step_residuals_vs_gaussian.png`, `se_step_residuals_qq.png`.
 
-## 正文块 C — 图像定位误差随跑道里程 \(s\)（参考 multi-lap notebook）
+## Block C — Image localization error vs track distance \(s\) (multi-lap notebook)
 
-在 racing line 弧长 \(s\) 上统计融合/单路误差，拟合 **\(\sigma_{\mathrm{obs}}(s)\)**（多高斯 / bin-MAD，再 sharpen），供 EKF 观测协方差使用。
+On racing-line arc length \(s\), statistics on fused/single-stream error; fit **\(\sigma_{\mathrm{obs}}(s)\)** (multi-Gaussian / bin-MAD, then sharpen) for EKF observation covariance.
 
-建议插图：
+Suggested figures:
 
 - `loc_lap3_fused/obs_error_sigma_vs_s.png`  
 - `loc_lap3_fused/sigma_multigauss_vs_s.png`  
 - `loc_lap3_fused/err_vs_s_fused_se2.png`
 
-## 正文块 D — 为什么必须用实验确定图像定位误差？
+## Block D — Why experimental image localization error?
 
-写在醒目位置（引用用户原意，稍作工程化）：
+Prominent callout (user intent, engineering wording):
 
-> 视觉误差 **不止** 来自安装/内参偏差与成像随机噪声，更主要来自：  
-> **特征检测误差、描述子噪声、跨帧匹配错误、PnP 外点** —— 这些环节高度非线性、场景相关，**很难用解析公式先验量化**。  
-> 因此用 **Lap3 query × GT** 在 \(s\) 上 empirically 估计 \(\sigma(s)\)，再进入滤波器。
+> Visual error comes **not only** from mounting/intrinsic bias and imaging noise, but mainly from:  
+> **feature detection error, descriptor noise, cross-frame matching mistakes, PnP outliers** — nonlinear and scene-dependent, **hard to quantify with closed-form priors**.  
+> Therefore **Lap3 query × GT** empirically estimates \(\sigma(s)\) along \(s\), then feeds the filter.
 
-## 正文块 E — 为降低 detect / matching 误差已做的工作（条列）
+## Block E — Work to reduce detect / matching error (bullets)
 
-- HF-Net / SuperPoint 类局部特征 + NetVLAD 全局检索（层级缩小误匹配空间）  
-- mutual NN + 比率检验；PnP RANSAC + inlier 计数进融合权重  
-- **`fr` ego-mask**（自车区域多边形），减少引擎盖/车身误特征  
-- 多圈地图（Lap2+4）与 **按 \(s\) 的邻域选关键帧**，减少外观歧义  
-- 融合门控（位置/航向一致性）抑制单路炸点  
+- HF-Net / SuperPoint-class local features + NetVLAD global retrieval (hierarchy shrinks false-match space)  
+- mutual NN + ratio test; PnP RANSAC + inlier count in fusion weights  
+- **`fr` ego-mask** (ego vehicle polygon), reduce hood/body false features  
+- Multi-lap map (Lap2+4) and **\(s\)-neighborhood keyframe selection**, reduce appearance ambiguity  
+- Fusion gates (position/heading consistency) suppress single-stream blow-ups  
 
-## 页脚来源
+## Footer sources
 `odometry/lap2_velocity_odometry.ipynb` · `state-error-estimation/se_step_residual_noise.ipynb` · `loc_lap3_fused/obs_error_sigma_*`
 
 ---
 
-# 第 4 页｜EKF：运动预测 + 图像校正
+# Page 4 | EKF: Motion Prediction + Image Correction
 
-## 标题
-**扩展卡尔曼滤波：高频航位预测 × 异步视觉更新**
+## Title
+**Extended Kalman Filter: High-Rate Dead Reckoning × Asynchronous Vision Updates**
 
-副标题：噪声来自第 3 页；流程与公式见 `QUERY_DEMO_EKF.md`；结果见 Lap5–7 fr+rl demo
+Subtitle: Noise from page 3; flow and formulas in `QUERY_DEMO_EKF.md`; results from Lap5–7 fr+rl demo
 
-## 正文块 A — 系统角色
+## Block A — System roles
 
-| 输入 | 角色 |
+| Input | Role |
 |---|---|
-| SE：\(v,a,\omega_z\) @ ~106 Hz | **Predict** |
-| 相机 fr / r / rl @ ~10 Hz（实验最终用 **fr+rl**） | **Localize → Fuse → Update** |
-| 首帧 SE pose | **仅初始化** |
-| GT / SE pose 序列 | **禁止作运行时观测** |
+| SE: \(v,a,\omega_z\) @ ~106 Hz | **Predict** |
+| Cameras fr / r / rl @ ~10 Hz (final experiment **fr+rl**) | **Localize → Fuse → Update** |
+| First-frame SE pose | **Init only** |
+| GT / SE pose sequence | **Not runtime observations** |
 
-> **相机取舍说明（与第 2 页一致）：** 最终 EKF 采用 **`fr` + `rl`**（非 `fl`）。  
-> 相对三相机：少一路可省算力；相对 `r+rl`：`fr+rl` 在 Lap3/5 上精度–时延更均衡（见 query-demo 两相机对照）。
+> **Camera choice (consistent with page 2):** Final EKF uses **`fr` + `rl`** (not `fl`).  
+> vs three cameras: one fewer saves compute; vs `r+rl`: `fr+rl` balances accuracy–latency on Lap3/5 (see query-demo two-camera comparison).
 
-## 正文块 B — 完整数学流程（建议半页公式区）
+## Block B — Full math flow (half-slide formula block)
 
-**状态：**
+**State:**
 
 \[
 \mathbf{x}=[x,\;y,\;\psi]^\top
 \]
 
-**1. 预测（运动模型 \(f\)，控制 \(u=(v_x,v_y,a_x,a_y,\omega_z)\)）**
+**1. Predict (motion model \(f\), control \(u=(v_x,v_y,a_x,a_y,\omega_z)\))**
 
 \[
 \mathbf{x}_{k|k-1}=f(\mathbf{x}_{k-1|k-1},u_k,\Delta t),\quad
@@ -276,22 +276,22 @@ P_{k|k-1}=F_k P_{k-1|k-1} F_k^\top + Q_k
 Q \approx G\,\mathrm{diag}(\sigma_{v_x}^2,\sigma_{v_y}^2,\sigma_{a_x}^2,\sigma_{a_y}^2,\sigma_{\omega}^2)\,G^\top
 \]
 
-（\(\sigma_\bullet\) = 第 3 页 MADσ）
+(\(\sigma_\bullet\) = page 3 MADσ)
 
-**2. 异步相机 → 对齐到 \(t_{\mathrm{last}}\)**
+**2. Async cameras → align to \(t_{\mathrm{last}}\)**
 
 \[
 t_{\mathrm{last}}=\max_c t_c,\quad
 \hat{z}_c(t_{\mathrm{last}})=\mathrm{Propagate}\big(\hat{z}_c(t_c),\,u,\,t_c\to t_{\mathrm{last}}\big)
 \]
 
-**3. 融合观测**
+**3. Fused observation**
 
 \[
 z=\mathrm{fuse\_se2}\big(\{\hat{z}_c(t_{\mathrm{last}})\},\{\omega_c\}\big)
 \]
 
-**4. 更新（观测噪声随里程）**
+**4. Update (observation noise vs distance)**
 
 \[
 \hat{s}=\mathrm{xy\_to\_s}(\mathbf{x}_{k|k-1}),\quad
@@ -304,86 +304,86 @@ K=P H^\top(HPH^\top+R)^{-1},\quad
 P\leftarrow(I-KH)P
 \]
 
-\(h(\mathbf{x})=\mathbf{x}\)；yaw 创新 wrap 到 \((-\pi,\pi]\)。视觉失败则 **只预测、不更新**（保 coverage）。
+\(h(\mathbf{x})=\mathbf{x}\); wrap yaw innovation to \((-\pi,\pi]\). On vision failure **predict only, no update** (preserve coverage).
 
-**流程简图：**
+**Flow sketch:**
 
 ```text
 SE(v,a,ω) ──predict──► x,P
                          │
-相机帧 ──localize──► z_c ──propagate──► fuse_se2 ──update(R(s))──► x,P
+Camera frames ──localize──► z_c ──propagate──► fuse_se2 ──update(R(s))──► x,P
 ```
 
-## 正文块 C — 实验结果（官方 `evaluate.py`）
+## Block C — Experimental results (official `evaluate.py`)
 
-方法：**ekf_cam_2cam（fr+rl）** · 地图 Lap2+4 · 评测 Lap5 / 6 / 7  
-submission：`query-demo/outputs/lap5_7_2cam_fr_rl/submissions/`
+Method: **ekf_cam_2cam (fr+rl)** · map Lap2+4 · eval Lap5 / 6 / 7  
+submissions: `query-demo/outputs/lap5_7_2cam_fr_rl/submissions/`
 
-| 窗口 | poses | coverage | **pos RMSE [m]** | lat / lon RMSE | yaw RMSE [deg] | within 1 m |
+| Window | poses | coverage | **pos RMSE [m]** | lat / lon RMSE | yaw RMSE [deg] | within 1 m |
 |---|---:|---:|---:|---|---:|---:|
 | Lap5 | 1523 | 100% | **1.116** | 0.849 / 0.724 | 0.445 | 73.3% |
 | Lap6 | 1205 | 100% | **0.875** | 0.260 / 0.835 | 0.215 | 81.9% |
 | Lap7 | 1095 | 100% | **0.867** | 0.385 / 0.777 | 0.204 | 77.4% |
-| Lap5–7 合并 | 3823 | 100% | **0.976** | 0.592 / 0.776 | 0.325 | 77.2% |
+| Lap5–7 pooled | 3823 | 100% | **0.976** | 0.592 / 0.776 | 0.325 | 77.2% |
 
-**对照（同设定下，示意量级，Lap5）：**  
-纯 SE 航位 RMSE ~11 m；离线 fr+rl 融合 ~1.8 m；**EKF ~1.1 m** —— 在精度与可在线运行之间取得平衡。
+**Baseline (same setup, indicative, Lap5):**  
+Pure SE dead reckoning RMSE ~11 m; offline fr+rl fusion ~1.8 m; **EKF ~1.1 m** — balance of accuracy and online feasibility.
 
-## 建议插图
+## Suggested figures
 
-| 图 | 路径 |
+| Figure | Path |
 |---|---|
-| 轨迹 | `query-demo/outputs/lap5_7_2cam_fr_rl/lap{5,6,7}/compare/traj_vs_gt.png` |
-| 误差–时间 | `.../compare/err_vs_time.png` |
-| 模式柱状图 | `.../compare/metrics_official.png` |
-| 跨圈汇总 | `.../metrics_cross_lap.png` |
-| 公式旁小图 | EKF predict/update 框图（自制） |
+| Trajectories | `query-demo/outputs/lap5_7_2cam_fr_rl/lap{5,6,7}/compare/traj_vs_gt.png` |
+| Error vs time | `.../compare/err_vs_time.png` |
+| Mode bar chart | `.../compare/metrics_official.png` |
+| Cross-lap summary | `.../metrics_cross_lap.png` |
+| Beside formulas | EKF predict/update block diagram (custom) |
 
-## 页脚来源
+## Footer sources
 `query-demo/QUERY_DEMO_EKF.md` · `lap5_7_ekf_2cam_fr_rl_query_demo.ipynb` · `submissions/evaluate_metrics.txt`
 
 ---
 
-# 第 5 页｜可改进方向
+# Page 5 | Improvement Directions
 
-## 标题
-**下一步：更稳的特征、更好的地图、更强的横向约束、更广的外观覆盖**
+## Title
+**Next Steps: More Robust Features, Better Maps, Stronger Lateral Constraints, Broader Appearance Coverage**
 
-## 改进点（四条，做成 2×2 或纵向四段）
+## Improvements (four items, 2×2 or four vertical sections)
 
-### 1. 他车 / 动态目标 Mask
-在特征提取前做 **车辆检测**，将他车区域 mask 掉，避免把动态物体上的特征点配进地图，降低定位抖动与炸点。
+### 1. Other Vehicles / Dynamic-Object Mask
+**Vehicle detection** before feature extraction; mask other cars to avoid dynamic features in the map, reducing localization jitter and blow-ups.
 
-### 2. 地图：建图圈 + 多圈优化（而非只堆关键帧）
-当前用 **Lap2+Lap4 建 SfM**。可改为：  
-- 仍用这两圈控制地图规模；  
-- 另用 **Lap1 / Lap3 / Lap5** 等对地图做 **bundle adjustment / 路标优化**。  
-→ **地图不大，但精度吃满多圈训练数据。**
+### 2. Maps: Mapping Laps + Multi-Lap Optimization (Not Just Stacking Keyframes)
+Current **Lap2+Lap4 SfM**. Alternative:  
+- Still use those laps to bound map size;  
+- Use **Lap1 / Lap3 / Lap5** etc. for **bundle adjustment / landmark refinement**.  
+→ **Map stays small, accuracy uses multi-lap training data fully.**
 
-### 3. 车道线 + 高精度 2D 赛道图
-引入车道 / 路沿检测，结合已有 `track_bounds` 高精度二维图，加强对 **lateral offset（\(n\)）** 的约束，进一步压横向误差。
+### 3. Lane Lines + High-Precision 2D Track Map
+Lane / curb detection with existing `track_bounds` high-precision 2D map to tighten **lateral offset (\(n\))** and further reduce cross-track error.
 
-### 4. 外观域扩展（白天）
-现有训练/建图几乎全是 **夜场**。需补充 **白天** 数据建图或域自适应，提升跨时段稳定性。
+### 4. Appearance Domain Extension (Daytime)
+Training/mapping is almost all **night**. Add **daytime** mapping or domain adaptation for cross-time stability.
 
-## 收尾一句
-当前系统已在多圈正式指标上达到 **~0.9–1.1 m RMSE、coverage 100%**；上述四点分别对应 **鲁棒性、地图精度、横向精度、泛化** 四条主轴。
+## Closing line
+The system already achieves **~0.9–1.1 m RMSE, 100% coverage** on multi-lap official metrics; the four items target **robustness, map accuracy, lateral accuracy, generalization**.
 
-## 建议插图
-- 左：失败案例截图（他车入画 / 夜场过曝）  
-- 右：改进路线图（Mask → Map BA → Lane → Day）
+## Suggested figures
+- Left: failure case screenshots (other car in frame / night overexposure)  
+- Right: improvement roadmap (Mask → Map BA → Lane → Day)
 
 ---
 
-## 附录：PPT 制作 checklist
+## Appendix: PPT Production Checklist
 
-- [ ] 第 1 页：论文流程图 +「每相机独立 SfM」架构图  
-- [ ] 第 2 页：**必须有** `traj_vs_gt` / `traj_fused_se2`，并贴 Lap2 vs Lap2+4 与 fused 表  
-- [ ] 第 3 页：航位误差曲线 + MADσ 直方图 + \(\sigma(s)\) 曲线  
-- [ ] 第 4 页：EKF 公式区 + Lap5–7 轨迹 + official evaluate 表（强调 **fr+rl**，勿写成 fl）  
-- [ ] 第 5 页：四条改进，一条一图标即可  
+- [ ] Page 1: paper pipeline + “per-camera independent SfM” architecture  
+- [ ] Page 2: **must include** `traj_vs_gt` / `traj_fused_se2`, plus Lap2 vs Lap2+4 and fused tables  
+- [ ] Page 3: dead-reckoning error curves + MADσ histogram + \(\sigma(s)\) curve  
+- [ ] Page 4: EKF formula block + Lap5–7 trajectories + official evaluate table (stress **fr+rl**, not fl)  
+- [ ] Page 5: four improvements, one icon each  
 
-### 关键路径速查
+### Key Path Quick Reference
 
 ```text
 paper/1812.03506v2.pdf
