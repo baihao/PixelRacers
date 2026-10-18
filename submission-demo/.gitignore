@@ -1,0 +1,13 @@
+# run products
+outputs/
+
+# large self-contained resources (copy locally; do not commit)
+sfm-model/map_*/map_bundle.npz
+sfm-model/map_*/netvlad_db.npz
+sfm-model/map_*/points3D.ply
+sfm-model/models/hfnet.onnx
+track-model/map.mcap
+
+# python
+__pycache__/
+*.pyc

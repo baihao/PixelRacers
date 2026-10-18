@@ -1,0 +1,47 @@
+{
+  "model": "periodic_multi_gaussian",
+  "description": "Observation position error std vs racing-line s (fused_se2).",
+  "formula": "sigma(s)=sigma0+sum_k a_k*exp(-0.5*d_L(s,mu_k)^2/w_k^2)",
+  "units": {
+    "s": "m",
+    "sigma": "m"
+  },
+  "L_m": 2976.875276595886,
+  "K": 5,
+  "sigma0_m": 0.18107451797621266,
+  "peaks": [
+    {
+      "mu_m": 1368.0075585386505,
+      "a_m": 6.412265215748768,
+      "w_m": 30.593727372570665
+    },
+    {
+      "mu_m": 2181.8659670158386,
+      "a_m": 6.256699415635336,
+      "w_m": 46.70920988005465
+    },
+    {
+      "mu_m": 2398.5413074145504,
+      "a_m": 3.5054944935935946,
+      "w_m": 69.99999999999996
+    },
+    {
+      "mu_m": 1873.2406595343386,
+      "a_m": 3.250994782663646,
+      "w_m": 39.620175947566885
+    },
+    {
+      "mu_m": 1654.703195159862,
+      "a_m": 2.7272370329971114,
+      "w_m": 34.556992425709446
+    }
+  ],
+  "fit_meta": {
+    "source_npz": "/Users/hbai/SchubKI/PixelRacers/3d-map-test/outputs_hfnet_multi_lap_s/loc_lap3_fused/sigma_multigauss_fit.npz",
+    "keep_q": 0.995,
+    "e_cut_m": 20.787276675775175,
+    "target_h_m": 22.0,
+    "bin_w_m": 35.0,
+    "n_grid": 400
+  }
+}

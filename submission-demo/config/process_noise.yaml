@@ -1,0 +1,12 @@
+source: /Users/hbai/SchubKI/PixelRacers/submission-demo/error-model/se_step_residual_noise.json
+lap_filter: null
+sigma_vx_mps: 0.07291625677170689
+sigma_vy_mps: 0.020390247216390003
+sigma_ax_mps2: 10.591458770185817
+sigma_ay_mps2: 8.62517353987282
+sigma_wz_radps: 0.0031257765394782804
+P0_xy_m2: 0.25
+P0_yaw_rad2: 0.00030461741978670857
+sigma_yaw_obs_rad: 0.03490658503988659
+gate_xy_m: 5.0
+gate_yaw_deg: 15.0
