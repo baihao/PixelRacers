@@ -6,45 +6,86 @@ Design notes: [`DESIGN.md`](DESIGN.md).
 
 ---
 
-## Quick test (recommended): `run_submission.ipynb`
+## Step 1 — Download and set up the environment
 
-This is the **primary entry point** for reviewers and developers.
+Do this once per machine before running any notebook in this folder.
 
-### 1. Prerequisites
+### 1.1 Clone the repository (including submodules)
 
-1. Clone **PixelRacers** and run **`bash scripts/setup_pixel_racers_venv.sh`** (see [root `README.md`](../README.md) § Environment), then `source scripts/env.sh`.
-2. Jupyter kernel: **`pixel-racers`**.
-3. **Git LFS** maps (if not already on disk):
+**Hierarchical Localization (hloc)** lives in `third_party/Hierarchical-Localization` and is required for NetVLAD / the localize stack. Clone with submodules:
 
-   ```bash
-   cd PixelRacers
-   git lfs install
-   git lfs pull
-   ```
+```bash
+git clone --recurse-submodules git@github.com:baihao/PixelRacers.git
+cd PixelRacers
+```
 
-   You need real files under `sfm-model/map_*_lap2+4/` (`*.npz`, `*.ply`) and `track-model/map.mcap` — not tiny pointer text files.
+If you already cloned without `--recurse-submodules`:
 
-4. A **training** or **test** `.mcap` on your machine (not in git). Example layout:
+```bash
+cd PixelRacers
+git submodule update --init --recursive
+```
 
-   ```text
-   /path/to/data/
-     c0_2026-10-13_22-53-42_camloc/
-       c0_2026-10-13_22-53-42_camloc_0.mcap    # eval / training
-     rosbag_2026-10-13_16-08-46_cameras_lap/
-       rosbag_2026-10-13_16-08-46_cameras_lap_0.mcap   # predict / test
-   ```
+(Use your fork or HTTPS URL if needed. The setup script in §1.3 also runs `git submodule update --init --recursive`.)
 
-   No pre-extracted `extracted/` folder is required: the notebook **extracts** camera calib, tf, track bounds, state estimation, and (eval only) GT from the mcap into `outputs/.../assets/`.
+### 1.2 Git LFS — prebuilt maps and track model
 
-### 2. Open the notebook
+Large files under `submission-demo/sfm-model/` and `submission-demo/track-model/` are stored with **Git LFS**:
+
+```bash
+git lfs install          # once per machine
+git lfs pull             # from PixelRacers repo root
+```
+
+Verify you have **real** binaries (hundreds of MB), not short pointer text, e.g.:
+
+```bash
+ls -lh submission-demo/sfm-model/map_fr_lap2+4/map_bundle.npz
+ls -lh submission-demo/track-model/map.mcap
+```
+
+### 1.3 Python environment (`pixel-racers` venv)
+
+From the **PixelRacers repo root**:
+
+```bash
+bash scripts/setup_pixel_racers_venv.sh
+source scripts/env.sh
+```
+
+This creates `./pixel-racers`, initializes the **hloc** submodule, installs [`requirements.txt`](../requirements.txt), and registers the Jupyter kernel **`pixel-racers`**.
+
+Options: `--recreate`, `--no-kernel`, `--skip-submodule`. Details: [root `README.md`](../README.md) § Environment, [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
+
+On macOS, if you see `OMP: Error #15`: `export KMP_DUPLICATE_LIB_OK=TRUE` (already set by `scripts/env.sh` and the notebooks).
+
+### 1.4 Obtain a `.mcap` bag (not in git)
+
+Download or copy the Constructor Labs **training** and/or **test** bag to your disk. Example layout:
+
+```text
+/path/to/data/
+  c0_2026-10-13_22-53-42_camloc/
+    c0_2026-10-13_22-53-42_camloc_0.mcap    # eval / training
+  rosbag_2026-10-13_16-08-46_cameras_lap/
+    rosbag_2026-10-13_16-08-46_cameras_lap_0.mcap   # predict / test
+```
+
+No pre-extracted `extracted/` folder is required — the pipeline extracts calib, tf, track bounds, state estimation, and (eval only) GT from the mcap on first run.
+
+---
+
+## Step 2 — Test with `run_submission.ipynb`
+
+Primary entry point for reviewers: open **`run_submission.ipynb`** with kernel **`pixel-racers`**.
 
 ```bash
 cd PixelRacers/submission-demo
 jupyter notebook run_submission.ipynb
-# or open run_submission.ipynb in Cursor / VS Code with kernel pixel-racers
+# or open in Cursor / VS Code and select kernel pixel-racers
 ```
 
-### 3. Edit the **User configuration** cell (first code cell after the title)
+### 2.1 Edit the **User configuration** cell
 
 Set **absolute paths** to your mcap files and the run mode:
 
@@ -81,7 +122,7 @@ INIT_POSE_XYYAW = (-120.0, 695.0, -1.842)   # required for predict unless using 
 
 For help finding a good initial pose on test data, use [`run_init_pose.ipynb`](run_init_pose.ipynb).
 
-### 4. Run cells in order
+### 2.2 Run cells in order
 
 | Step | Cell | What it does |
 |------|------|----------------|
@@ -99,7 +140,9 @@ After each option cell you should see a **combined-lap figure** and a **vertical
 
 **Smoke test (faster):** in SETUP, set `QUERY_STRIDE = 20` (or use CLI `--query-stride 20`).
 
-### 5. Where outputs go
+Reference throughput (M3 MacBook Air): see [root `README.md`](../README.md) — **Reference performance**.
+
+### 2.3 Where outputs go
 
 ```text
 outputs/<mode>_<mcap_stem>/
@@ -119,25 +162,7 @@ Default **`sp_nv_nn`**: SuperPoint local features + NetVLAD global + mutual-NN m
 
 ## Dependencies
 
-```
-torch, lightglue, numpy, pandas, opencv-python, scipy, pyyaml,
-mcap, mcap-ros2-support, tqdm
-```
-
-Kernel: **`pixel-racers`**. NetVLAD weights come from `third_party/Hierarchical-Localization` (Pitts30K download on first use).
-
-### Git LFS
-
-Large assets: `sfm-model/map_*/{map_bundle,netvlad_db}.npz`, `points3D.ply`, `track-model/map.mcap`. After clone:
-
-```bash
-git lfs install
-git lfs pull    # from PixelRacers repo root
-```
-
-Small files (`build_meta.json`, `error-model/`, `config/`, etc.) are normal git objects. Maintainer push: `GIT_LFS_SKIP_PUSH=1 git push` then `git lfs push` (see root `README.md`).
-
-On macOS, if you see `OMP: Error #15`: `export KMP_DUPLICATE_LIB_OK=TRUE` (set automatically in notebook entry).
+Installed by `scripts/setup_pixel_racers_venv.sh` from [`requirements.txt`](../requirements.txt), including **torch**, **lightglue** (via hloc), **mcap**, **PyYAML**, etc. NetVLAD **Pitts30K** weights download on first localize run.
 
 ---
 
