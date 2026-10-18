@@ -36,6 +36,25 @@ Full step-by-step tables, examples, and output layout: **[`submission-demo/READM
 
 Example submission artifacts: [`submission-files/`](submission-files/).
 
+### Reference performance (two-camera localize, Option 2 / 3)
+
+Measured on **MacBook Air, Apple M3, 2024** with the default **`sp_nv_nn`** backend (`run_submission.ipynb`, `QUERY_STRIDE = 1`).
+
+**Per camera (fr and rl separately)** — one query frame:
+
+- **~100 ms per image** for the vision localize step: CLAHE/preprocess → SuperPoint + NetVLAD features → NetVLAD retrieval → mutual-NN match → PnP (timings also appear in the eval table as `loc_ms_mean_fr` / `loc_ms_mean_rl`).
+
+**End-to-end pipeline (why overall ≈ 2 FPS)** — Options 2 and 3 are built on **two-camera** operation, not a single stream:
+
+1. **Data processing** — read JPEG from `.mcap`, decode, undistort, ego mask, sync **fr** and **rl** to logical frames (`t_last`).
+2. **Two localize passes** — fr and rl each run the ~100 ms/image path (often sequentially on one GPU); both must finish before fusion.
+3. **Option 2 (two-camera)** — nearest-stamp alignment and **SE(2) fusion** of fr+rl poses into one submission stamp.
+4. **Option 3 (EKF)** — same vision cost as above, plus SE prediction, extrapolation of both cameras to `t_last`, fused SE(2) measurement, and **EKF update** per sync bucket.
+
+Counting mcap I/O, dual-camera localize, and fusion/EKF overhead together, **overall throughput is about 2 FPS** on that hardware (effective logical frames per second at full stride, both cameras). Option 1 (motion only, no vision) is much faster.
+
+Second runs hit **`loc/.../errors.csv` cache** and skip step 2; times improve accordingly. Use a larger `QUERY_STRIDE` for smoke tests.
+
 ---
 
 ## 1. Environment
