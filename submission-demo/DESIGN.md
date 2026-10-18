@@ -1,4 +1,12 @@
-# submission-demo 设计文档
+# submission-demo — design document
+
+> **User guide (English):** [`README.md`](README.md) — how to configure mcap paths and run [`run_submission.ipynb`](run_submission.ipynb).  
+> **Status:** Architecture reference (implementation matches this doc).  
+> **Goal:** Self-contained submission localization under `submission-demo/`: raw **`.mcap`** in, **eval** (training + GT) or **predict** (test), three options (motion-only / two-camera / EKF), online SfM localize with disk cache.
+
+---
+
+# submission-demo 设计文档（原文）
 
 > 状态：**设计稿，供 review**。确认后再按本文件生成代码。
 > 目标：在 `submission-demo/` 下生成一套**自包含**的、最终用于提交（submission）的定位代码。输入为**原始 `.mcap`**，支持两种运行目标（training 评测 / test 预测）与三种定位方案（motion-only / 两相机定位 / EKF 融合），并内置「在线跑 SfM localize → 结果缓存复用」。

@@ -1,98 +1,182 @@
 # submission-demo
 
-自包含的两相机（fr + rl）定位提交代码。输入原始 `.mcap`，支持 **eval**（training + GT，出 metrics）与 **predict**（test，仅出 submission），提供三种定位方案。
+Self-contained **two-camera (fr + rl)** localization submission pipeline. Input is a raw **`.mcap`** ROS 2 bag. Supports **eval** (training bag + ground truth → metrics + submissions) and **predict** (test bag → submissions only). Three options: motion-only dead reckoning, two-camera visual fusion, and EKF fusion.
 
-设计说明见 [`DESIGN.md`](DESIGN.md)。
+Design notes: [`DESIGN.md`](DESIGN.md).
 
-## 后端
+---
 
-本版用 `sp_nv_nn`（SuperPoint 局部特征 + NetVLAD 全局 + mutual-NN 匹配），与 `sfm-model/map_{fr,rl}_lap2+4/` 预建地图一致。Query 与建图共用 **CLAHE（Lab-L）+ 亮斑 keypoint 过滤**（`PixelRacers/image_preprocess.py`）。HF-Net 为未来升级（见 `DESIGN.md` §14）。
+## Quick test (recommended): `run_submission.ipynb`
 
-## 依赖
+This is the **primary entry point** for reviewers and developers.
+
+### 1. Prerequisites
+
+1. Clone **PixelRacers** and install the environment (see [root `README.md`](../README.md) § Environment).
+2. Jupyter kernel: **`pixel-racers`**.
+3. **Git LFS** maps (if not already on disk):
+
+   ```bash
+   cd PixelRacers
+   git lfs install
+   git lfs pull
+   ```
+
+   You need real files under `sfm-model/map_*_lap2+4/` (`*.npz`, `*.ply`) and `track-model/map.mcap` — not tiny pointer text files.
+
+4. A **training** or **test** `.mcap` on your machine (not in git). Example layout:
+
+   ```text
+   /path/to/data/
+     c0_2026-10-13_22-53-42_camloc/
+       c0_2026-10-13_22-53-42_camloc_0.mcap    # eval / training
+     rosbag_2026-10-13_16-08-46_cameras_lap/
+       rosbag_2026-10-13_16-08-46_cameras_lap_0.mcap   # predict / test
+   ```
+
+   No pre-extracted `extracted/` folder is required: the notebook **extracts** camera calib, tf, track bounds, state estimation, and (eval only) GT from the mcap into `outputs/.../assets/`.
+
+### 2. Open the notebook
+
+```bash
+cd PixelRacers/submission-demo
+jupyter notebook run_submission.ipynb
+# or open run_submission.ipynb in Cursor / VS Code with kernel pixel-racers
+```
+
+### 3. Edit the **User configuration** cell (first code cell after the title)
+
+Set **absolute paths** to your mcap files and the run mode:
+
+| Variable | Purpose |
+|----------|---------|
+| `TRAIN_MCAP` | Path to **training** `.mcap` (has `/tf` GT). Used when `MODE="eval"`. |
+| `TEST_MCAP` | Path to **test** `.mcap` (no GT). Used when `MODE="predict"`. |
+| `MODE` | `"eval"` → use `TRAIN_MCAP`, compute metrics. `"predict"` → use `TEST_MCAP`, submissions only. |
+| `LAPS` | **eval only**: which laps to run, e.g. `[5, 6, 7]`, or `None` for all complete laps. Ignored for predict (whole bag unless you set windows). |
+| `LAPS_JSON` | Optional path to lap time windows, e.g. `../lapdata/laps.json`. `None` = detect laps from GT in eval. |
+| `INIT_POSE_XYYAW` | **predict only**: initial `(x, y, yaw)` in map frame. **Ignored in eval** (GT first pose is used). |
+| `INIT_POSE_T0_NS` | Optional timestamp for init pose; `None` = default from SE / GT. |
+
+**Example — eval on training bag, laps 5–7:**
+
+```python
+TRAIN_MCAP = "/path/to/c0_2026-10-13_22-53-42_camloc/c0_2026-10-13_22-53-42_camloc_0.mcap"
+TEST_MCAP  = "/path/to/rosbag_2026-10-13_16-08-46_cameras_lap/rosbag_2026-10-13_16-08-46_cameras_lap_0.mcap"
+MODE = "eval"
+LAPS = [5, 6, 7]
+LAPS_JSON = "/path/to/PixelRacers/lapdata/laps.json"
+INIT_POSE_XYYAW = (0.0, 0.0, 0.0)   # ignored in eval
+INIT_POSE_T0_NS = None
+```
+
+**Example — predict on test bag:**
+
+```python
+MODE = "predict"
+# TRAIN_MCAP still set but unused; pipeline reads TEST_MCAP:
+TEST_MCAP = "/path/to/rosbag_2026-10-13_16-08-46_cameras_lap/rosbag_2026-10-13_16-08-46_cameras_lap_0.mcap"
+INIT_POSE_XYYAW = (-120.0, 695.0, -1.842)   # required for predict unless using run_init_pose.ipynb
+```
+
+For help finding a good initial pose on test data, use [`run_init_pose.ipynb`](run_init_pose.ipynb).
+
+### 4. Run cells in order
+
+| Step | Cell | What it does |
+|------|------|----------------|
+| 1 | **User configuration** | Paths and mode (above). |
+| 2 | **SETUP** | Builds `SubmissionConfig`, extracts assets from mcap, loads maps, defines windows. |
+| 3 | **Option 1** | Motion-only dead reckoning. |
+| 4 | **Option 2** | fr+rl localize + SE(2) fusion (slow first time; cached after). |
+| 5 | **Option 3** | EKF fusion. |
+| 6 | **Summary** | Overlay trajectories + metric bars (`window=all`). |
+| 7 | **Deliverables** | Writes `compare/evaluate_table.csv` (eval). |
+
+After each option cell you should see a **combined-lap figure** and a **vertical metrics table** from `tools/evaluate.py` (eval mode).
+
+**First run** on Option 2/3 can take a long time (online feature extraction + PnP). Re-runs reuse `outputs/.../loc/.../errors.csv` when fingerprints match.
+
+**Smoke test (faster):** in SETUP, set `QUERY_STRIDE = 20` (or use CLI `--query-stride 20`).
+
+### 5. Where outputs go
+
+```text
+outputs/<mode>_<mcap_stem>/
+  assets/                    # extracted from mcap (cached)
+  loc/<lap>/loc_{fr,rl}/     # localization cache
+  <lap>/{motion_only,two_cam,ekf}/submission.csv
+  compare/                   # merged eval tables and summary plots
+```
+
+Official scoring: `tools/evaluate.py` (same rules as the vertical table in the notebook).
+
+---
+
+## Backend
+
+Default **`sp_nv_nn`**: SuperPoint local features + NetVLAD global + mutual-NN matching, aligned with bundled maps `sfm-model/map_{fr,rl}_lap2+4/`. Query preprocessing: **CLAHE (Lab-L)** + highlight keypoint filter (`PixelRacers/image_preprocess.py`). HF-Net is a future upgrade ([`DESIGN.md`](DESIGN.md) §14, [`sfm-model/models/README_HFNET.md`](sfm-model/models/README_HFNET.md)).
+
+## Dependencies
 
 ```
 torch, lightglue, numpy, pandas, opencv-python, scipy, pyyaml,
 mcap, mcap-ros2-support, tqdm
 ```
-Kernel：`pixel-racers`（`/Users/hbai/SchubKI/PixelRacers/pixel-racers`）。NetVLAD 走 `third_party/Hierarchical-Localization`（首用自动下载 Pitts30K 权重）。
+
+Kernel: **`pixel-racers`**. NetVLAD weights come from `third_party/Hierarchical-Localization` (Pitts30K download on first use).
 
 ### Git LFS
 
-本目录下 **SfM 地图**（`sfm-model/map_*/{map_bundle,netvlad_db}.npz`、`points3D.ply`）与 **`track-model/map.mcap`** 使用 Git LFS。克隆仓库后：
+Large assets: `sfm-model/map_*/{map_bundle,netvlad_db}.npz`, `points3D.ply`, `track-model/map.mcap`. After clone:
 
 ```bash
-git lfs install    # 首次在本机
-git lfs pull       # 在 PixelRacers 根目录拉取 LFS 对象
+git lfs install
+git lfs pull    # from PixelRacers repo root
 ```
 
-规则见仓库根目录 `.gitattributes`。`build_meta.json`、`frames_with_s.csv`、`error-model/`、`config/` 等为普通 Git 文件。
+Small files (`build_meta.json`, `error-model/`, `config/`, etc.) are normal git objects. Maintainer push: `GIT_LFS_SKIP_PUSH=1 git push` then `git lfs push` (see root `README.md`).
 
-推送时若不想和 ~1GB 地图一起卡住：`GIT_LFS_SKIP_PUSH=1 git push origin main`，再 `git lfs push origin main`（见根 `README.md`）。
+On macOS, if you see `OMP: Error #15`: `export KMP_DUPLICATE_LIB_OK=TRUE` (set automatically in notebook entry).
 
-> macOS 上若遇 `OMP: Error #15`，代码已在入口设 `KMP_DUPLICATE_LIB_OK=TRUE`；手动跑脚本前也可 `export KMP_DUPLICATE_LIB_OK=TRUE`。
+---
 
-## 运行
-
-### Notebook（主入口）
-打开 `run_submission.ipynb`，编辑 **SETUP** cell（`MODE` / mcap 路径 / `LAPS`），顺序执行：
-SETUP → Option 1（motion only）→ Option 2（two-camera）→ Option 3（EKF）→ 汇总。
-
-### CLI
+## CLI (optional)
 
 ```bash
 cd submission-demo
 export KMP_DUPLICATE_LIB_OK=TRUE
 
-# eval：training mcap，全部圈，三个方案
 python run_submission.py --mode eval --train-mcap /path/c0_..._0.mcap
-
-# eval：只跑 lap3，只跑 EKF
 python run_submission.py --mode eval --train-mcap ... --laps 3 --options ekf
-
-# 快速冒烟（抽帧 stride 20）
 python run_submission.py --mode eval --train-mcap ... --laps 3 --query-stride 20
-
-# predict：test mcap（无 GT，默认整段 mcap，仅出 submission）
 python run_submission.py --mode predict --test-mcap /path/test.mcap
 ```
 
-## 三种方案（option）
+---
 
-| option | 目录 | 说明 |
-|---|---|---|
-| `motion_only` | `outputs/<mode>_<stem>/<win>/motion_only/` | SE 航位积分，在两相机 t_last 采样 |
-| `two_cam` | `.../two_cam/` | fr+rl 在线定位 → nearest-stamp ω 加权 SE(2) 融合（无 EKF）|
-| `ekf` | `.../ekf/` | SE 预测 + fr/rl 外推 → se2 → EKF update，R(s)=σ(s)² |
+## Three options
 
-每个方案输出 `submission.csv`（`timestamp_ns,x,y,yaw`）；eval 另出 `metrics_official.csv`。
+| option | Output dir | Description |
+|--------|------------|-------------|
+| `motion_only` | `.../motion_only/` | SE dead reckoning sampled at two-camera `t_last` |
+| `two_cam` | `.../two_cam/` | fr+rl localize → ω-weighted SE(2) fusion (no EKF) |
+| `ekf` | `.../ekf/` | SE predict + fr/rl extrapolation → se2 → EKF, R(s)=σ(s)² |
 
-## 产物布局
+Each writes `submission.csv` (`timestamp_ns,x,y,yaw`). Eval also writes per-lap metrics and merged `compare/evaluate_table.csv`.
 
-```
-outputs/<mode>_<mcap_stem>/
-  assets/                 # 从 mcap 提取：camera_info/tf_static/track_bounds/state_estimation(+gt eval)
-  loc/<win>/loc_{fr,rl}/  # 在线定位结果 errors.csv + query_meta.json（缓存）
-  <win>/motion_only|two_cam|ekf/submission.csv [+ metrics_official.csv]
-  compare/metrics_compare.csv    # eval 汇总
-```
+## Bundled resources
 
-## 缓存
+| Directory | Contents |
+|-----------|----------|
+| `sfm-model/map_{fr,rl}_lap2+4/` | Prebuilt sp_nv_nn map bundles |
+| `sfm-model/polygons.json` | fr/rl ego masks |
+| `track-model/map.mcap` | Racing line for (s,n) / plots |
+| `error-model/` | σ(s) and process noise MADσ |
+| `config/process_noise.yaml` | Generated from noise JSON on first EKF run |
+| `tools/` | `extract_assets.py`, `extract_gt.py`, `evaluate.py`, … |
 
-`loc/<win>/loc_<cam>/errors.csv` 带 `query_meta.json` 指纹（地图 + mcap + 窗口 + stride + top_k + backend）。相同任务二次运行直接复用，不重跑特征/PnP。强制重算：SETUP 里 `OVERRIDE_QUERY=True` 或 CLI `--override-query`。
+## Predict (test) notes
 
-## 资源目录（自包含）
-
-| 目录 | 内容 |
-|---|---|
-| `sfm-model/map_{fr,rl}_lap2+4/` | sp_nv_nn 预建地图 bundle |
-| `sfm-model/polygons.json` | fr/rl ego mask |
-| `track-model/map.mcap` | racing line（(s,n) 帧）|
-| `error-model/obs_error_sigma_vs_s.json` | 观测噪声 σ(s) |
-| `error-model/se_step_residual_noise.json` | EKF 过程噪声 MADσ |
-| `config/process_noise.yaml` | 由上一项首次运行自动生成 |
-| `tools/` | `extract_assets.py` / `extract_gt.py` / `convert.py` / `evaluate.py` / `track_frame.py` |
-
-## predict（test）注意
-
-- 无 GT ⇒ 不算 metrics、不切圈：默认整段 mcap 出一份 submission；需要分段可用 `WINDOWS` / `--windows start:end`，或 `LAPS_JSON`。
-- 运动输入 `state_estimation`（vx/vy/ax/ay/wz）在 test 里也有（它是车端 SE，不是 GT），所以 Option 1/3 可用，首帧初值取 SE 首帧 pose。
+- No GT → no metrics, no lap splitting by default: one submission over the full mcap. Use manual `WINDOWS` in SETUP or `LAPS_JSON` if you have external windows.
+- `state_estimation` (vx, vy, ax, ay, wz) exists on test bags (vehicle SE, not GT), so Options 1 and 3 work; set **`INIT_POSE_XYYAW`** or run `run_init_pose.ipynb`.

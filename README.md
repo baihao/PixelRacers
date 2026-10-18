@@ -1,206 +1,166 @@
 # PixelRacers
 
-Constructor Labs 赛道相机定位实验：mcap 回放、HF-Net SfM 建图/定位、SE 过程噪声、Lap3 EKF query-demo。
+Constructor Labs track **camera localization**: mcap playback, HF-Net / sp_nv_nn SfM mapping & localization, state-estimation process noise, Lap3 EKF query-demo, and a **self-contained submission pipeline** in [`submission-demo/`](submission-demo/).
 
-## 1. 环境
+---
+
+## Quick start — test the submission pipeline
+
+The fastest way to verify the repo is to run **`submission-demo/run_submission.ipynb`** on a training or test `.mcap`.
+
+1. **Environment** (once):
+
+   ```bash
+   cd PixelRacers
+   python3.12 -m venv pixel-racers
+   source pixel-racers/bin/activate
+   python -m pip install -U pip
+   git submodule update --init --recursive
+   python -m pip install -r requirements.txt
+   python -m ipykernel install --user --name pixel-racers --display-name "pixel-racers"
+   git lfs install && git lfs pull   # SfM maps + track-model mcap
+   ```
+
+2. **Point the notebook at your mcap** — open [`submission-demo/run_submission.ipynb`](submission-demo/run_submission.ipynb), edit the **User configuration** cell:
+
+   | Setting | Eval (training + GT) | Predict (test, no GT) |
+   |---------|----------------------|------------------------|
+   | `MODE` | `"eval"` | `"predict"` |
+   | Mcap path | `TRAIN_MCAP = "/absolute/path/to/training_0.mcap"` | `TEST_MCAP = "/absolute/path/to/test_0.mcap"` |
+   | Laps | `LAPS = [5, 6, 7]` or `None` | N/A (full bag unless you set windows) |
+   | Initial pose | ignored (GT used) | `INIT_POSE_XYYAW = (x, y, yaw)` |
+
+   Use **absolute paths** to `.mcap` files on your machine. You do **not** need a pre-built `extracted/` directory; assets are extracted on first SETUP run.
+
+3. **Run cells in order:** User config → SETUP → Option 1 → Option 2 → Option 3 → Summary → Deliverables.
+
+Full step-by-step tables, examples, and output layout: **[`submission-demo/README.md`](submission-demo/README.md)**.
+
+Example submission artifacts: [`submission-files/`](submission-files/).
+
+---
+
+## 1. Environment
+
+Same as quick start above. Use Jupyter kernel **`pixel-racers`**. On Apple Silicon, SfM notebooks expect **MPS**.
+
+Optional real HF-Net ONNX: [`3d-map-test/models/README_HFNET.md`](3d-map-test/models/README_HFNET.md). The submission demo defaults to **`sp_nv_nn`** (SuperPoint + NetVLAD + mutual NN).
+
+### Git LFS (submission maps)
+
+`submission-demo/sfm-model/` (`map_bundle.npz`, `netvlad_db.npz`, `points3D.ply`) and `submission-demo/track-model/map.mcap` are stored with **Git LFS** (see `.gitattributes`).
 
 ```bash
-cd PixelRacers
-python3.12 -m venv pixel-racers
-source pixel-racers/bin/activate          # 或: source scripts/env.sh
-python -m pip install -U pip
-git submodule update --init --recursive
-python -m pip install -r requirements.txt
-python -m ipykernel install --user --name pixel-racers --display-name "pixel-racers"
-```
-
-### Git LFS（提交包 / SfM 地图）
-
-`submission-demo/sfm-model/`（`map_bundle.npz`、`netvlad_db.npz`、`points3D.ply`）与 `submission-demo/track-model/map.mcap` 由 **Git LFS** 管理（见根目录 `.gitattributes`）。克隆后需安装 LFS 并拉取指针背后的对象：
-
-```bash
-brew install git-lfs          # 或见 https://git-lfs.com
-git lfs install               # 每台机器一次
+brew install git-lfs
+git lfs install
 git clone git@github.com:baihao/PixelRacers.git
 cd PixelRacers
-git lfs pull                  # 若 checkout 后地图/mcap 只有几行文本指针，执行此命令
-git lfs ls-files              # 查看当前分支上的 LFS 文件
+git lfs pull
+git lfs ls-files
 ```
 
-已 clone 的仓库在 `git pull` 后若缺大文件，同样执行 `git lfs pull`。GitHub 账号需启用 LFS 配额（免费档有存储/带宽上限）。
+After `git pull`, run `git lfs pull` if map files look like short pointer text.
 
-**维护者：先推代码、后传大文件**（避免一次 push 卡住）：
+**Maintainers — push code first, LFS second:**
 
 ```bash
-# 1) 只推 Git 提交（含 LFS 指针，体积通常几 MB）
-GIT_LFS_SKIP_PUSH=1 git push origin main
-
-# 2) 再上传 LFS 对象（~1GB，可单独重试、可开新终端慢慢传）
-git lfs push origin main
+GIT_LFS_SKIP_PUSH=1 git push origin main   # code + pointers only
+git lfs push origin main                   # ~1GB maps (retryable)
 ```
 
-第 1 步完成后 GitHub 上已有全部源码；地图/mcap 在他人 `git lfs pull` 前仍是指针，第 2 步完成即可正常拉取。
+---
 
-Notebook 一律选 kernel **`pixel-racers`**。Apple Silicon 上 SfM 强制 **MPS**。
+## 2. Data layout (outside the repo)
 
-可选：若要用真正 HF-Net ONNX，见 [`3d-map-test/models/README_HFNET.md`](3d-map-test/models/README_HFNET.md)；默认后端 `sp_nv_nn`（SuperPoint + NetVLAD + mutual NN）即可跑通。
-
-## 2. 数据依赖（仓库外）
-
-默认 bag / 导出资产应放在与本仓库同级：
+Typical sibling directories (not committed):
 
 ```text
 SchubKI/
   c0_2026-10-13_22-53-42_camloc/
     c0_2026-10-13_22-53-42_camloc_0.mcap
-    extracted/gt.csv
-    extracted/state_estimation.csv
-    extracted/track_bounds.json
-    23-00-38_cut_120m_update/map.mcap   # Option B racing line
-  PixelRacers/                          # 本仓库
+    extracted/          # optional; submission-demo extracts its own under outputs/
+  rosbag_..._cameras_lap/
+    ..._0.mcap          # test bag for predict mode
+  PixelRacers/          # this repo
 ```
 
-圈次时间窗：`lapdata/laps.json`。
+Lap time windows: [`lapdata/laps.json`](lapdata/laps.json).
 
-产物（map / loc / 图）默认写在各子目录的 `outputs*` 下，已被 `.gitignore` 忽略，需本机跑 notebook 生成。
+Heavy experiment outputs under `outputs/` / `outputs_*` are gitignored.
 
-## 3. 组件一览
+---
 
-| 路径 | 做什么 |
-|------|--------|
-| `camloc_play.py` | 读 mcap 相机 JPEG（无需完整 ROS 2） |
-| `lapdata/` | 各圈 `start_ns` / `end_ns` |
-| `odometry/` | SE 的 v/a/wz 航位推算基线 |
-| `state-error-estimation/` | SE 逐步残差 → 过程噪声 MADσ |
-| `3d-map-test/` | Lap2+4 建图 + Lap3 多相机定位 + σ(s) |
-| `query-demo/` | Lap3：纯 SE vs EKF（三相机 sync + se2） |
-| `fr-auto-mask/polygons.json` | `camera_fr` 车体 mask |
-| `submission-demo/` | 两相机提交 demo（含 LFS 预建地图 + `run_submission.ipynb`） |
-| `submission-files/` | 示例 submission + evaluate 报告 |
+## 3. Components
+
+| Path | Role |
+|------|------|
+| [`submission-demo/`](submission-demo/) | **Submission pipeline** — `run_submission.ipynb`, bundled maps, three options |
+| [`submission-files/`](submission-files/) | Example EKF submission + evaluate report |
+| `camloc_play.py` | Read camera JPEG from mcap |
+| `lapdata/` | Lap `start_ns` / `end_ns` |
+| `odometry/` | SE dead-reckoning baseline |
+| `state-error-estimation/` | SE step residuals → process noise MADσ |
+| `3d-map-test/` | Lap2+4 mapping + Lap3 multi-cam loc + σ(s) |
+| `query-demo/` | Lap3 SE vs EKF (three-camera sync + se2) |
+| `fr-auto-mask/polygons.json` | `camera_fr` ego mask |
 | `third_party/Hierarchical-Localization` | hloc submodule |
 
-## 4. 怎么跑（推荐顺序）
+---
 
-### 4.1 快速试播 mcap
+## 4. Recommended workflow (research notebooks)
+
+### 4.1 Play mcap
 
 ```bash
 source pixel-racers/bin/activate
 python camloc_play.py --list-topics
 python camloc_play.py --camera fl --first
-# GUI（需桌面）:
-# python camloc_play.py --camera fl --play --duration 5
 ```
 
-Notebook：`test/play_mcap.ipynb`。
+Notebook: `test/play_mcap.ipynb`.
 
-### 4.2 航位基线（可选）
+### 4.2 Velocity odometry (optional)
 
-打开 `odometry/lap2_velocity_odometry.ipynb`，自上而下跑完。  
-用 SE 的 `vx,vy,ax,ay,wz` 从圈起点积分，在相机时间戳上与 GT 对比。
+`odometry/lap2_velocity_odometry.ipynb` — integrate SE v/a/ω vs GT at camera times.
 
-### 4.3 过程噪声 MADσ（EKF 需要）
+### 4.3 Process noise MADσ (for EKF)
 
-打开 `state-error-estimation/se_step_residual_noise.ipynb`，跑完生成：
+`state-error-estimation/se_step_residual_noise.ipynb` → `se_step_residual_noise.json`. A copy ships in `submission-demo/error-model/`.
 
-- `se_step_residual_noise.json`
-- `se_step_residual_noise_summary.csv`
+### 4.4 SfM + Lap3 localization
 
-query-demo 会读其中的 **`mad_sigma`**（不是样本 std）。仓库里已带一份可用的 JSON；改数据后请重跑本 notebook。
+`3d-map-test/sfm_hfnet_r_lap2_lap4_s_order_lap3_loc.ipynb` — see `3d-map-test/SFM_MULTI_LAP_S_ORDER.md`.
 
-### 4.4 SfM 建图 + Lap3 定位（视觉观测）
+### 4.5 EKF query-demo
 
-主 notebook：
+`query-demo/lap3_ekf_query_demo.ipynb`, `query-demo/lap5_ekf_query_demo.ipynb` — see `query-demo/QUERY_DEMO_EKF.md`.
 
-```text
-3d-map-test/sfm_hfnet_r_lap2_lap4_s_order_lap3_loc.ipynb
-```
-
-设计说明：`3d-map-test/SFM_MULTI_LAP_S_ORDER.md`。
-
-| 步骤 | 内容 |
-|------|------|
-| §1–2 | 加载标定 / GT / laps / HF-Net（或 `sp_nv_nn`） |
-| § 建图+query | 相机 `r` / `fr` / `rl`：Lap**2+4** 按 $s$ 建图 → Lap**3** query |
-| § metrics | 各相机 `metrics_official` + 轨迹 |
-| § 融合 | 三相机 `fuse_se2` → `outputs_hfnet_multi_lap_s/loc_lap3_fused/` |
-| §6–7 | 多高斯 $\sigma(s)$ → `obs_error_sigma_vs_s.json`（EKF 观测噪声） |
-
-输出目录（体积大，已 ignore）：
-
-```text
-3d-map-test/outputs_hfnet_multi_lap_s/
-  map_{r,fr,rl}_lap2+4/
-  loc_lap3_{r,fr,rl}/
-  loc_lap3_fused/obs_error_sigma_vs_s.json
-```
-
-首次全量较慢。缓存有效时会跳过 map/query；强制重跑设 notebook 里 `OVERRIDE_MAP` / `OVERRIDE_QUERY = True`。
-
-烟测可把 `MAP_STRIDE` / `QUERY_STRIDE` 改为 `2`。
-
-### 4.5 EKF query-demo（Lap3 / Lap5）
-
-| Notebook | 评测圈 |
-|----------|--------|
-| `query-demo/lap3_ekf_query_demo.ipynb` | Lap **3**（loc 已由 4.4 生成） |
-| `query-demo/lap5_ekf_query_demo.ipynb` | Lap **5**（地图仍用 Lap2+4；需先 query） |
-
-设计：`query-demo/QUERY_DEMO_EKF.md`。
-
-Lap5 若尚无 `loc_lap5_*`：
+Official evaluate (per-lap GT crop):
 
 ```bash
-cd query-demo
-python ensure_lap_query.py --lap 5          # 复用 map_*_lap2+4，只跑 query
-# 或在 lap5 notebook §0 中运行
-```
-
-依赖（先跑 4.3 / 4.4，或使用已有产物）：
-
-- `state-error-estimation/se_step_residual_noise.json`
-- `3d-map-test/outputs_hfnet_multi_lap_s/loc_lap{N}_{r,fr,rl}/errors.csv`
-- `3d-map-test/outputs_hfnet_multi_lap_s/loc_lap3_fused/obs_error_sigma_vs_s.json`（$\sigma(s)$，各圈共用）
-- `extracted/state_estimation.csv`、`gt.csv`、`track_bounds.json`、`map.mcap`
-Notebook 流程：
-
-1. 写 `query-demo/config/process_noise.yaml`（MADσ）
-2. **Mode A** `se_predict`：仅 SE 航位
-3. **Mode B** `ekf_cam`：SE 预测 + 三相机齐套 → 外推到 $t_{\mathrm{last}}$ → se2 → EKF（$R=\sigma(s)$）
-4. **对比** `se_predict` / `fused_se2` / `ekf_cam` → metrics + 轨迹图
-
-产物：
-
-```text
-query-demo/outputs/lap{N}/
-  gt_lap{N}.csv
-  se_predict/submission.csv
-  ekf_cam/submission.csv
-  compare/metrics_official.csv
-  compare/metrics_official.png
-```
-
-官方评测（必须用裁剪后的该圈 GT）：
-
-```bash
-python ../c0_2026-10-13_22-53-42_camloc/tools/evaluate.py \
+python submission-demo/tools/evaluate.py \
   query-demo/outputs/lap3/gt_lap3.csv \
   query-demo/outputs/lap3/ekf_cam/submission.csv
-# Lap5 同理替换 lap3 → lap5
 ```
 
-## 5. 常见问题
+---
 
-| 现象 | 处理 |
-|------|------|
-| `No module named lightglue` / 缺依赖 | `source pixel-racers/bin/activate` 后重装 `requirements.txt`；确认 submodule 已 init |
-| OpenMP 重复库报错 | `export KMP_DUPLICATE_LIB_OK=TRUE`（`scripts/env.sh` 已设） |
-| evaluate coverage &lt; 90% | 勿用全行程 `gt.csv`；用 `query-demo/outputs/lap3/gt_lap3.csv` |
-| query-demo 找不到 loc / σ(s) | 先跑通 `sfm_hfnet_r_lap2_lap4_s_order_lap3_loc.ipynb` §建图到 §7 |
-| MPS 不可用 | SfM notebook 要求 Apple GPU；无 MPS 需改代码放宽设备（当前硬要求） |
+## 5. FAQ
+
+| Issue | Fix |
+|-------|-----|
+| Missing `lightglue` / deps | Activate venv; reinstall `requirements.txt`; init submodules |
+| OpenMP duplicate library | `export KMP_DUPLICATE_LIB_OK=TRUE` |
+| evaluate coverage &lt; 90% | Use lap-cropped GT, not full-trip `gt.csv` |
+| Maps are tiny text files | `git lfs pull` at repo root |
+| query-demo missing loc / σ(s) | Run 3d-map-test notebook through fused σ(s) export |
+
+---
 
 ## 6. Submodule
 
 ```bash
 git submodule update --init --recursive
-# 上游: https://github.com/cvg/Hierarchical-Localization.git
 ```
+
+Upstream: [Hierarchical-Localization](https://github.com/cvg/Hierarchical-Localization).
