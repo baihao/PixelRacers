@@ -45,11 +45,72 @@ def load_track_outline(track_bounds_json: Path) -> Dict[str, np.ndarray]:
     return out
 
 
+def load_track_outline_from_map_mcap(map_mcap: Path) -> Dict[str, np.ndarray]:
+    """Fallback for test bags without /constructor0/track_bounds: use track-model map.mcap."""
+    import sys
+
+    tools = Path(__file__).resolve().parent / "tools"
+    if str(tools) not in sys.path:
+        sys.path.insert(0, str(tools))
+    from track_frame import load_lines  # type: ignore
+
+    lines = load_lines(str(map_mcap))
+    out: Dict[str, np.ndarray] = {"racing_line": np.asarray(lines["track"].p, float)}
+    if "pit" in lines:
+        out["pit_lane"] = np.asarray(lines["pit"].p, float)
+    return out
+
+
+def resolve_track_outline(
+    track_bounds_json: Path,
+    map_mcap: Path,
+    *,
+    track_line=None,
+) -> Dict[str, np.ndarray]:
+    """Racing line + track_left/right for trajectory plots (eval + predict).
+
+    Boundaries: bag ``track_bounds.json`` if present, else
+    ``<track-model>/track_bounds.json`` next to ``map.mcap``.
+    """
+    out: Dict[str, np.ndarray] = {}
+    if track_line is not None and hasattr(track_line, "p"):
+        out["racing_line"] = np.asarray(track_line.p, float)
+    mp = Path(map_mcap)
+    if "racing_line" not in out and mp.is_file():
+        out.update(load_track_outline_from_map_mcap(mp))
+
+    bounds = load_track_outline(track_bounds_json)
+    if not bounds:
+        fallback = mp.parent / "track_bounds.json"
+        bounds = load_track_outline(fallback)
+    for key in ("track_left", "track_right"):
+        if key in bounds:
+            out[key] = bounds[key]
+    return out
+
+
 def _draw_track(ax, outline: Dict[str, np.ndarray]) -> None:
+    if "racing_line" in outline:
+        xy = outline["racing_line"]
+        ax.plot(
+            xy[:, 0], xy[:, 1], color="#bdc3c7", lw=1.2, zorder=1, label="racing line"
+        )
+    if "pit_lane" in outline:
+        xy = outline["pit_lane"]
+        ax.plot(xy[:, 0], xy[:, 1], color="#d5dbdb", lw=0.9, ls="--", zorder=1)
+    drew_bounds = False
     for key, color in (("track_left", "#7f8c8d"), ("track_right", "#95a5a6")):
         if key in outline:
             xy = outline[key]
-            ax.plot(xy[:, 0], xy[:, 1], color=color, lw=0.8, zorder=1)
+            ax.plot(
+                xy[:, 0],
+                xy[:, 1],
+                color=color,
+                lw=1.0,
+                zorder=1,
+                label="track boundary" if not drew_bounds else "_track_boundary",
+            )
+            drew_bounds = True
 
 
 def plot_option(

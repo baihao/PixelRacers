@@ -40,7 +40,13 @@ def extract_assets(mcap: Path | str, out_dir: Path | str, *, force: bool = False
         out / "track_bounds.json",
         out / "state_estimation.csv",
     ]
-    if force or not all(p.is_file() for p in needed):
+    se_path = out / "state_estimation.csv"
+    stale_empty = (
+        se_path.is_file()
+        and se_path.stat().st_size < 256
+        and not force
+    )
+    if force or stale_empty or not all(p.is_file() for p in needed):
         import extract_assets as _ea  # tools/extract_assets.py
 
         _ea.main(str(mcap), str(out))
@@ -67,10 +73,22 @@ class Assets:
     track_bounds: dict
     se: pd.DataFrame
     gt: Optional[pd.DataFrame] = None
+    motion_source: str = "state_estimation"
 
     @property
     def has_gt(self) -> bool:
         return self.gt is not None and len(self.gt) > 0
+
+    @property
+    def se_has_pose(self) -> bool:
+        if self.se is None or len(self.se) == 0:
+            return False
+        for col in ("x", "y", "yaw"):
+            if col not in self.se.columns:
+                return False
+        x = pd.to_numeric(self.se["x"], errors="coerce")
+        y = pd.to_numeric(self.se["y"], errors="coerce")
+        return bool((x.notna() & y.notna()).any())
 
 
 def ensure_assets(
@@ -92,6 +110,12 @@ def ensure_assets(
     tf_static = json.loads((out / "tf_static.json").read_text())
     track_bounds = json.loads((out / "track_bounds.json").read_text())
     se = _read_csv_ns(out / "state_estimation.csv")
+    motion_source = "state_estimation"
+    meta_path = out / "motion_meta.json"
+    if meta_path.is_file():
+        motion_source = json.loads(meta_path.read_text()).get(
+            "source", motion_source
+        )
     return Assets(
         dir=out,
         camera_info=camera_info,
@@ -99,4 +123,5 @@ def ensure_assets(
         track_bounds=track_bounds,
         se=se,
         gt=gt_df,
+        motion_source=motion_source,
     )

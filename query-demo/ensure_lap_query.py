@@ -14,7 +14,11 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 SFM = ROOT / "3d-map-test"
-OUT = SFM / "outputs_hfnet_multi_lap_s"
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+from query_demo_ekf import DEFAULT_LOC_CAMERAS, SFM_OUT
+
+OUT = SFM_OUT
 POLYGONS = ROOT / "fr-auto-mask" / "polygons.json"
 MAP_MCAP = (
     ROOT.parent
@@ -30,7 +34,9 @@ def _setup_path() -> None:
             sys.path.insert(0, str(p))
 
 
-def loc_ready(query_lap: int, cameras: Sequence[str] = ("r", "fr", "rl")) -> bool:
+def loc_ready(
+    query_lap: int, cameras: Sequence[str] = DEFAULT_LOC_CAMERAS
+) -> bool:
     return all(
         (OUT / f"loc_lap{int(query_lap)}_{c}" / "errors.csv").is_file() for c in cameras
     )
@@ -39,7 +45,7 @@ def loc_ready(query_lap: int, cameras: Sequence[str] = ("r", "fr", "rl")) -> boo
 def ensure_lap_loc(
     query_lap: int = 5,
     *,
-    cameras: Sequence[str] = ("r", "fr", "rl"),
+    cameras: Sequence[str] = DEFAULT_LOC_CAMERAS,
     map_laps: Tuple[int, ...] = (2, 4),
     override_query: bool = False,
     override_map: bool = False,

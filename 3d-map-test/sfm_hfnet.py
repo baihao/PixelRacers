@@ -30,6 +30,9 @@ import sfm_experiment as sfm
 
 ROOT = Path(__file__).resolve().parent
 PIXEL_ROOT = ROOT.parent
+if str(PIXEL_ROOT) not in sys.path:
+    sys.path.insert(0, str(PIXEL_ROOT))
+import image_preprocess as ipre
 MODELS_DIR = ROOT / "models"
 DEFAULT_ONNX = MODELS_DIR / "hfnet.onnx"
 DEFAULT_POLYGONS = PIXEL_ROOT / "fr-auto-mask" / "polygons.json"
@@ -318,12 +321,18 @@ def run_joint_features(
     *,
     min_nn_dist: float = 0.5,
     ego_mask: Optional[np.ndarray] = None,
+    photo: Optional[ipre.PhotometricConfig] = None,
     desc: str = "HFNet-joint",
 ) -> None:
+    pcfg = photo if photo is not None else ipre.DEFAULT_PHOTOMETRIC
     for fr in tqdm(frames, desc=desc, unit="frm"):
-        img = apply_ego_mask_bgr(fr.bgr_undist, ego_mask)
+        bgr_feat, gray0 = ipre.prepare_feature_bgr(fr.bgr_undist, pcfg)
+        img = apply_ego_mask_bgr(bgr_feat, ego_mask)
         kpts, d, scores, g = feats.extract_joint(img)
         kpts, d, scores = filter_kpts_by_mask(kpts, d, scores, ego_mask)
+        kpts, d, scores = ipre.filter_kpts_highlight(
+            kpts, d, scores, gray0, cfg=pcfg
+        )
         kpts, d, scores = sfm.filter_ambiguous_descriptors(
             kpts, d, scores, min_nn_dist=min_nn_dist
         )
@@ -999,6 +1008,7 @@ def query_cache_valid(
     query_lap: int,
     query_stride: int,
     top_k: int,
+    preprocess_version: str = ipre.PREPROCESS_VERSION,
 ) -> bool:
     """True if cached query matches this map + query lap settings."""
     if not loc_ready(loc_dir):
@@ -1020,6 +1030,8 @@ def query_cache_valid(
     if int(meta.get("query_stride", -1)) != int(query_stride):
         return False
     if int(meta.get("top_k", -1)) != int(top_k):
+        return False
+    if str(meta.get("preprocess_version", "")) != str(preprocess_version):
         return False
     return True
 
@@ -1264,6 +1276,17 @@ def run_camera_multi_lap_s_pipeline(
         print(f"[{cam}] points={len(points)} in {time.perf_counter()-t0:.1f}s")
         sfm.save_map_bundle(map_dir, map_frames, points)
         sfm.save_ply(map_dir / "points3D.ply", points)
+        (map_dir / "build_meta.json").write_text(
+            json.dumps(
+                {
+                    "preprocess": ipre.DEFAULT_PHOTOMETRIC.to_meta(),
+                    "map_laps": list(map_laps),
+                    "camera": cam,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
 
     pairs = make_s_neighbor_pairs(
         s_map,
@@ -1281,6 +1304,7 @@ def run_camera_multi_lap_s_pipeline(
         query_lap=query_lap,
         query_stride=query_stride,
         top_k=top_k,
+        preprocess_version=ipre.PREPROCESS_VERSION,
     )
     legacy_ok = (
         err_csv.is_file()
@@ -1312,6 +1336,8 @@ def run_camera_multi_lap_s_pipeline(
             "top_k": int(top_k),
             "map_laps": list(map_laps),
             "map_fingerprint": map_bundle_fingerprint(map_dir),
+            "preprocess_version": ipre.PREPROCESS_VERSION,
+            "preprocess": ipre.DEFAULT_PHOTOMETRIC.to_meta(),
             "n_query": int(len(df)),
             "n_success": int(df.ok.astype(bool).sum()),
             "legacy_imported": bool(legacy_ok),
@@ -1435,6 +1461,8 @@ def run_camera_multi_lap_s_pipeline(
         "top_k": int(top_k),
         "map_laps": list(map_laps),
         "map_fingerprint": map_bundle_fingerprint(map_dir),
+        "preprocess_version": ipre.PREPROCESS_VERSION,
+        "preprocess": ipre.DEFAULT_PHOTOMETRIC.to_meta(),
         "n_query": int(len(df)),
         "n_success": int(df.ok.astype(bool).sum()),
     }

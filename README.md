@@ -14,6 +14,33 @@ python -m pip install -r requirements.txt
 python -m ipykernel install --user --name pixel-racers --display-name "pixel-racers"
 ```
 
+### Git LFS（提交包 / SfM 地图）
+
+`submission-demo/sfm-model/`（`map_bundle.npz`、`netvlad_db.npz`、`points3D.ply`）与 `submission-demo/track-model/map.mcap` 由 **Git LFS** 管理（见根目录 `.gitattributes`）。克隆后需安装 LFS 并拉取指针背后的对象：
+
+```bash
+brew install git-lfs          # 或见 https://git-lfs.com
+git lfs install               # 每台机器一次
+git clone git@github.com:baihao/PixelRacers.git
+cd PixelRacers
+git lfs pull                  # 若 checkout 后地图/mcap 只有几行文本指针，执行此命令
+git lfs ls-files              # 查看当前分支上的 LFS 文件
+```
+
+已 clone 的仓库在 `git pull` 后若缺大文件，同样执行 `git lfs pull`。GitHub 账号需启用 LFS 配额（免费档有存储/带宽上限）。
+
+**维护者：先推代码、后传大文件**（避免一次 push 卡住）：
+
+```bash
+# 1) 只推 Git 提交（含 LFS 指针，体积通常几 MB）
+GIT_LFS_SKIP_PUSH=1 git push origin main
+
+# 2) 再上传 LFS 对象（~1GB，可单独重试、可开新终端慢慢传）
+git lfs push origin main
+```
+
+第 1 步完成后 GitHub 上已有全部源码；地图/mcap 在他人 `git lfs pull` 前仍是指针，第 2 步完成即可正常拉取。
+
 Notebook 一律选 kernel **`pixel-racers`**。Apple Silicon 上 SfM 强制 **MPS**。
 
 可选：若要用真正 HF-Net ONNX，见 [`3d-map-test/models/README_HFNET.md`](3d-map-test/models/README_HFNET.md)；默认后端 `sp_nv_nn`（SuperPoint + NetVLAD + mutual NN）即可跑通。
@@ -48,6 +75,8 @@ SchubKI/
 | `3d-map-test/` | Lap2+4 建图 + Lap3 多相机定位 + σ(s) |
 | `query-demo/` | Lap3：纯 SE vs EKF（三相机 sync + se2） |
 | `fr-auto-mask/polygons.json` | `camera_fr` 车体 mask |
+| `submission-demo/` | 两相机提交 demo（含 LFS 预建地图 + `run_submission.ipynb`） |
+| `submission-files/` | 示例 submission + evaluate 报告 |
 | `third_party/Hierarchical-Localization` | hloc submodule |
 
 ## 4. 怎么跑（推荐顺序）

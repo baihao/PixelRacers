@@ -17,6 +17,17 @@ import pandas as pd
 import sfm_core as sfm
 import sfm_features as feat
 
+try:
+    import image_preprocess as ipre
+except ImportError:
+    import sys
+    from pathlib import Path
+
+    _px = Path(__file__).resolve().parent.parent
+    if str(_px) not in sys.path:
+        sys.path.insert(0, str(_px))
+    import image_preprocess as ipre
+
 QUERY_META_NAME = "query_meta.json"
 LOC_TIMES_NAME = "localize_times_s.npy"
 ERRORS_NAME = "errors.csv"
@@ -68,6 +79,33 @@ def loc_ready(loc_dir: Path) -> bool:
     return (d / ERRORS_NAME).is_file() and (d / QUERY_META_NAME).is_file()
 
 
+def load_cached_errors(
+    cam: str,
+    *,
+    mcap: Path,
+    window: Tuple[int, int],
+    map_dir: Path,
+    out_loc_dir: Path,
+    backend: str = "sp_nv_nn",
+    query_stride: int = 1,
+    top_k: int = 5,
+) -> Optional[pd.DataFrame]:
+    """Return cached errors.csv without loading features / running PnP."""
+    out_loc_dir = Path(out_loc_dir)
+    start_ns, end_ns = int(window[0]), int(window[1])
+    if not query_cache_valid(
+        out_loc_dir,
+        map_dir=map_dir,
+        mcap=mcap,
+        window=(start_ns, end_ns),
+        stride=query_stride,
+        top_k=top_k,
+        backend=backend,
+    ):
+        return None
+    return pd.read_csv(out_loc_dir / ERRORS_NAME)
+
+
 def query_cache_valid(
     loc_dir: Path,
     *,
@@ -103,7 +141,68 @@ def query_cache_valid(
         return False
     if str(meta.get("backend", "")) != str(backend):
         return False
+    if str(meta.get("preprocess_version", "")) != str(ipre.PREPROCESS_VERSION):
+        return False
     return True
+
+
+def probe_first_visual_pose(
+    cam: str,
+    *,
+    mcap: Path,
+    window: Tuple[int, int],
+    map_dir: Path,
+    feats,
+    calib: sfm.CamCalib,
+    gt: Optional[pd.DataFrame],
+    top_k: int = 5,
+    min_nn_dist: float = 0.5,
+    max_frames: int = 40,
+    polygons_path: Optional[Path] = None,
+) -> Optional[Tuple[float, float, float, int]]:
+    """PnP on the first ``max_frames`` images until one localization succeeds."""
+    cam = cam.strip().lower()
+    start_ns, end_ns = int(window[0]), int(window[1])
+    map_frames, points = sfm.load_map_bundle(map_dir)
+    frames = sfm.extract_query_frames(
+        mcap,
+        start_ns,
+        end_ns,
+        calib,
+        gt,
+        camera=cam,
+        stride=1,
+        max_frames=int(max_frames),
+    )
+    if not frames:
+        return None
+    print(
+        f"[{cam}] init probe: {len(frames)} frames (max={max_frames}) "
+        f"window=[{start_ns},{end_ns}]"
+    )
+    ego_mask = feat.load_ego_mask(
+        cam, polygons_path if polygons_path is not None else feat.DEFAULT_POLYGONS
+    )
+    feat.run_joint_features(
+        frames,
+        feats,
+        min_nn_dist=min_nn_dist,
+        ego_mask=ego_mask,
+        desc=f"init-probe-{cam}",
+    )
+    for q in frames:
+        r = sfm.localize_query(
+            q, map_frames, points, feats, calib.K, calib.T_base_cam, top_k=top_k
+        )
+        if r["ok"] and r["pred"] is not None:
+            p = r["pred"]
+            print(
+                f"[{cam}] init probe OK stamp={int(q.stamp_ns)} "
+                f"inl={r['n_pnp_inl']} xy=({p[0]:.2f},{p[1]:.2f}) yaw={p[3]:.3f}"
+            )
+            return float(p[0]), float(p[1]), float(p[3]), int(q.stamp_ns)
+    print(f"[{cam}] init probe: no ok frame in first {len(frames)} tries")
+    return None
 
 
 def localize_camera(
@@ -219,6 +318,8 @@ def localize_camera(
         "n_success": int(df.ok.astype(bool).sum()),
         "localize_total_s": float(loc_total),
         "runtime_ms_mean": float(np.mean(loc_times_a) * 1000) if len(loc_times_a) else None,
+        "preprocess_version": ipre.PREPROCESS_VERSION,
+        "preprocess": ipre.DEFAULT_PHOTOMETRIC.to_meta(),
     }
     (out_loc_dir / QUERY_META_NAME).write_text(json.dumps(meta, indent=2))
     print(

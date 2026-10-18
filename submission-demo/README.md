@@ -6,7 +6,7 @@
 
 ## 后端
 
-本版用 `sp_nv_nn`（SuperPoint 局部特征 + NetVLAD 全局 + mutual-NN 匹配），与 `sfm-model/map_{fr,rl}_lap2+4/` 预建地图一致，直接复用、不重建。HF-Net 为未来升级（见 `DESIGN.md` §14）。
+本版用 `sp_nv_nn`（SuperPoint 局部特征 + NetVLAD 全局 + mutual-NN 匹配），与 `sfm-model/map_{fr,rl}_lap2+4/` 预建地图一致。Query 与建图共用 **CLAHE（Lab-L）+ 亮斑 keypoint 过滤**（`PixelRacers/image_preprocess.py`）。HF-Net 为未来升级（见 `DESIGN.md` §14）。
 
 ## 依赖
 
@@ -15,6 +15,19 @@ torch, lightglue, numpy, pandas, opencv-python, scipy, pyyaml,
 mcap, mcap-ros2-support, tqdm
 ```
 Kernel：`pixel-racers`（`/Users/hbai/SchubKI/PixelRacers/pixel-racers`）。NetVLAD 走 `third_party/Hierarchical-Localization`（首用自动下载 Pitts30K 权重）。
+
+### Git LFS
+
+本目录下 **SfM 地图**（`sfm-model/map_*/{map_bundle,netvlad_db}.npz`、`points3D.ply`）与 **`track-model/map.mcap`** 使用 Git LFS。克隆仓库后：
+
+```bash
+git lfs install    # 首次在本机
+git lfs pull       # 在 PixelRacers 根目录拉取 LFS 对象
+```
+
+规则见仓库根目录 `.gitattributes`。`build_meta.json`、`frames_with_s.csv`、`error-model/`、`config/` 等为普通 Git 文件。
+
+推送时若不想和 ~1GB 地图一起卡住：`GIT_LFS_SKIP_PUSH=1 git push origin main`，再 `git lfs push origin main`（见根 `README.md`）。
 
 > macOS 上若遇 `OMP: Error #15`，代码已在入口设 `KMP_DUPLICATE_LIB_OK=TRUE`；手动跑脚本前也可 `export KMP_DUPLICATE_LIB_OK=TRUE`。
 

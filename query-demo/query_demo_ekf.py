@@ -18,7 +18,9 @@ ROOT = HERE.parent
 CAMLOC = ROOT.parent / "c0_2026-10-13_22-53-42_camloc"
 EXTRACTED = CAMLOC / "extracted"
 LAPDATA = ROOT / "lapdata"
-SFM_OUT = ROOT / "3d-map-test" / "outputs_hfnet_multi_lap_s"
+# CLAHE + highlight-filter maps (fr/rl Lap2+4); see sfm_hfnet_fr_rl_clahe_lap3_loc.ipynb
+SFM_OUT = ROOT / "3d-map-test" / "outputs_hfnet_clahe_fr_rl"
+DEFAULT_LOC_CAMERAS: Tuple[str, ...] = ("fr", "rl")
 NOISE_JSON = ROOT / "state-error-estimation" / "se_step_residual_noise.json"
 PROCESS_YAML = HERE / "config" / "process_noise.yaml"
 EVALUATE_PY = CAMLOC / "tools" / "evaluate.py"

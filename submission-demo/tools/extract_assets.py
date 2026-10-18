@@ -77,12 +77,20 @@ def main(bag: str, out_dir: str) -> None:
     track_bounds: dict[str, dict] = {}
     state_rows: list[list] = []
 
+    TWIST_TOPIC = "/constructor0/validation/twist"
+    ACCEL_TOPIC = "/constructor0/validation/accel"
+
     topics = [
         *[f"/constructor0/sensor/camera_{c}/camera_info" for c in CAMERAS],
         "/tf_static",
         "/constructor0/track_bounds",
         "/constructor0/state_estimation",
+        TWIST_TOPIC,
+        ACCEL_TOPIC,
     ]
+
+    validation_twist: list[list] = []
+    validation_accel: list[list] = []
 
     with open(bag, "rb") as f:
         reader = make_reader(f, decoder_factories=[DecoderFactory()])
@@ -107,6 +115,38 @@ def main(bag: str, out_dir: str) -> None:
                     key = marker.ns or f"id_{marker.id}"
                     if key not in track_bounds and marker.points:
                         track_bounds[key] = _marker_polyline(marker)
+                continue
+
+            if name == TWIST_TOPIC:
+                ts = _stamp_ns(msg.header.stamp)
+                tw = msg.twist
+                validation_twist.append(
+                    [
+                        ts,
+                        f"{tw.linear.x:.6f}",
+                        f"{tw.linear.y:.6f}",
+                        f"{tw.linear.z:.6f}",
+                        f"{tw.angular.x:.6f}",
+                        f"{tw.angular.y:.6f}",
+                        f"{tw.angular.z:.6f}",
+                    ]
+                )
+                continue
+
+            if name == ACCEL_TOPIC:
+                ts = _stamp_ns(msg.header.stamp)
+                a = msg.accel
+                validation_accel.append(
+                    [
+                        ts,
+                        f"{a.linear.x:.6f}",
+                        f"{a.linear.y:.6f}",
+                        f"{a.linear.z:.6f}",
+                        f"{a.angular.x:.6f}",
+                        f"{a.angular.y:.6f}",
+                        f"{a.angular.z:.6f}",
+                    ]
+                )
                 continue
 
             if name == "/constructor0/state_estimation":
@@ -144,6 +184,67 @@ def main(bag: str, out_dir: str) -> None:
     )
     (out / "track_bounds.json").write_text(
         json.dumps(track_bounds, indent=2) + "\n", encoding="utf-8"
+    )
+
+    motion_source = "state_estimation"
+    if not state_rows and validation_twist:
+        validation_twist.sort(key=lambda r: int(r[0]))
+        validation_accel.sort(key=lambda r: int(r[0]))
+        accel_ts = [int(r[0]) for r in validation_accel]
+
+        def _nearest_accel(ts: int) -> list[str]:
+            if not validation_accel:
+                return ["0", "0", "0", "0", "0", "0"]
+            j = min(
+                range(len(accel_ts)),
+                key=lambda k: abs(accel_ts[k] - ts),
+            )
+            return validation_accel[j][1:]
+
+        for row in validation_twist:
+            ts, vx, vy, vz, wx, wy, wz = row
+            ax, ay, az, _aax, _aay, _aaz = _nearest_accel(int(ts))
+            v_mps = math.hypot(float(vx), float(vy))
+            state_rows.append(
+                [
+                    ts,
+                    "",  # x — no pose on test validation topics
+                    "",
+                    "",
+                    "",
+                    f"{v_mps:.6f}",
+                    vx,
+                    vy,
+                    vz,
+                    wx,
+                    wy,
+                    wz,
+                    ax,
+                    ay,
+                    az,
+                    "",
+                    "",
+                    wz,
+                ]
+            )
+        motion_source = "validation_twist_accel"
+        print(
+            f"validation twist/accel -> state_estimation rows: {len(state_rows)} "
+            f"(twist={len(validation_twist)} accel={len(validation_accel)})"
+        )
+
+    (out / "motion_meta.json").write_text(
+        json.dumps(
+            {
+                "source": motion_source,
+                "n_state_rows": len(state_rows),
+                "validation_twist": len(validation_twist),
+                "validation_accel": len(validation_accel),
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
     )
 
     state_path = out / "state_estimation.csv"

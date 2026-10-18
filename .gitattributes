@@ -1,0 +1,4 @@
+submission-demo/sfm-model/map_*/map_bundle.npz filter=lfs diff=lfs merge=lfs -text
+submission-demo/sfm-model/map_*/netvlad_db.npz filter=lfs diff=lfs merge=lfs -text
+submission-demo/sfm-model/map_*/points3D.ply filter=lfs diff=lfs merge=lfs -text
+submission-demo/track-model/*.mcap filter=lfs diff=lfs merge=lfs -text

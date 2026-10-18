@@ -1,0 +1,18 @@
+{
+  "preprocess": {
+    "enabled": true,
+    "clahe_clip": 2.5,
+    "clahe_tile": 8,
+    "highlight_mean_thr": 230.0,
+    "highlight_sat_frac": 0.3,
+    "bright_flat_mean": 180.0,
+    "bright_flat_std": 12.0,
+    "patch_radius": 7,
+    "version": "clahe_highlight_v1"
+  },
+  "map_laps": [
+    2,
+    4
+  ],
+  "camera": "rl"
+}

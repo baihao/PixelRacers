@@ -109,13 +109,7 @@ def camera_stamps(
 
 def mcap_time_bounds(mcap_path: Path | str, camera: str = "fr") -> Tuple[int, int]:
     """First/last camera header stamp across the whole bag (for whole-mcap runs)."""
-    lo: Optional[int] = None
-    hi: Optional[int] = None
-    for fr in iter_camera_frames(mcap_path, cameras=(camera,)):
-        if lo is None or fr.stamp_ns < lo:
-            lo = fr.stamp_ns
-        if hi is None or fr.stamp_ns > hi:
-            hi = fr.stamp_ns
-    if lo is None or hi is None:
+    stamps = camera_stamps(mcap_path, camera)
+    if not stamps:
         raise RuntimeError(f"no camera_{camera} frames in {mcap_path}")
-    return int(lo), int(hi)
+    return int(stamps[0]), int(stamps[-1])

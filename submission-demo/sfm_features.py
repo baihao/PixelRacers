@@ -8,6 +8,7 @@ a map rebuilt with HF-Net descriptors).
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
@@ -17,6 +18,10 @@ import numpy as np
 import sfm_core as sfm
 
 HERE = Path(__file__).resolve().parent
+PIXEL_ROOT = HERE.parent
+if str(PIXEL_ROOT) not in sys.path:
+    sys.path.insert(0, str(PIXEL_ROOT))
+import image_preprocess as ipre
 DEFAULT_POLYGONS = HERE / "sfm-model" / "polygons.json"
 DEFAULT_ONNX = HERE / "sfm-model" / "models" / "hfnet.onnx"
 
@@ -230,9 +235,11 @@ def run_joint_features(
     *,
     min_nn_dist: float = 0.5,
     ego_mask: Optional[np.ndarray] = None,
+    photo: Optional[ipre.PhotometricConfig] = None,
     desc: str = "features",
 ) -> None:
     """Extract local+global features for each frame (in place)."""
+    pcfg = photo if photo is not None else ipre.DEFAULT_PHOTOMETRIC
     try:
         from tqdm.auto import tqdm
 
@@ -240,9 +247,13 @@ def run_joint_features(
     except Exception:
         it = frames
     for fr in it:
-        img = apply_ego_mask_bgr(fr.bgr_undist, ego_mask)
+        bgr_feat, gray0 = ipre.prepare_feature_bgr(fr.bgr_undist, pcfg)
+        img = apply_ego_mask_bgr(bgr_feat, ego_mask)
         kpts, d, scores, g = feats.extract_joint(img)
         kpts, d, scores = filter_kpts_by_mask(kpts, d, scores, ego_mask)
+        kpts, d, scores = ipre.filter_kpts_highlight(
+            kpts, d, scores, gray0, cfg=pcfg
+        )
         kpts, d, scores = sfm.filter_ambiguous_descriptors(
             kpts, d, scores, min_nn_dist=min_nn_dist
         )

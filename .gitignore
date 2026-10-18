@@ -74,3 +74,21 @@ model_cache/
 # Common notebook side-products next to sources (keep small *.json noise summaries)
 *_pred_pose.csv
 *_stamps_ns.npy
+
+# ---------------------------------------------------------------------------
+# Submission bundle (submission-files + demo sfm / track model)
+# Negations must follow the global rules above that they override.
+# ---------------------------------------------------------------------------
+!submission-files/
+!submission-files/**
+
+!submission-demo/track-model/
+!submission-demo/track-model/**
+
+!submission-demo/sfm-model/map_*/
+!submission-demo/sfm-model/map_*/**
+!submission-demo/sfm-model/map_*/**.npz
+!submission-demo/sfm-model/map_*/**.ply
+
+!submission-files/**.png
+!submission-demo/track-model/**.mcap
