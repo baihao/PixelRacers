@@ -12,7 +12,7 @@ This is the **primary entry point** for reviewers and developers.
 
 ### 1. Prerequisites
 
-1. Clone **PixelRacers** and install the environment (see [root `README.md`](../README.md) § Environment).
+1. Clone **PixelRacers** and run **`bash scripts/setup_pixel_racers_venv.sh`** (see [root `README.md`](../README.md) § Environment), then `source scripts/env.sh`.
 2. Jupyter kernel: **`pixel-racers`**.
 3. **Git LFS** maps (if not already on disk):
 

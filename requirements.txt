@@ -1,11 +1,7 @@
 # PixelRacers — pixel-racers venv (Python 3.12 recommended)
 #
-#   cd PixelRacers
-#   python3.12 -m venv pixel-racers
-#   source pixel-racers/bin/activate
-#   python -m pip install -U pip
-#   python -m pip install -r requirements.txt
-#   python -m ipykernel install --user --name pixel-racers --display-name "pixel-racers"
+#   cd PixelRacers && bash scripts/setup_pixel_racers_venv.sh
+#   source scripts/env.sh
 
 # --- mcap playback (Constructor Labs camloc bag, no full ROS 2) ---
 mcap>=1.2
@@ -31,3 +27,4 @@ kornia>=0.6.11
 gdown>=4.0
 pandas>=2.0
 plotly>=5.0
+PyYAML>=6.0

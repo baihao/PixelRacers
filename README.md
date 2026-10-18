@@ -12,14 +12,12 @@ The fastest way to verify the repo is to run **`submission-demo/run_submission.i
 
    ```bash
    cd PixelRacers
-   python3.12 -m venv pixel-racers
-   source pixel-racers/bin/activate
-   python -m pip install -U pip
-   git submodule update --init --recursive
-   python -m pip install -r requirements.txt
-   python -m ipykernel install --user --name pixel-racers --display-name "pixel-racers"
-   git lfs install && git lfs pull   # SfM maps + track-model mcap
+   bash scripts/setup_pixel_racers_venv.sh    # creates ./pixel-racers, submodules, pip install, Jupyter kernel
+   source scripts/env.sh
+   git lfs install && git lfs pull              # optional: submission SfM maps + track-model mcap
    ```
+
+   Options: `--recreate` (delete old venv), `--no-kernel`, `--skip-submodule`. See [`scripts/setup_pixel_racers_venv.sh`](scripts/setup_pixel_racers_venv.sh).
 
 2. **Point the notebook at your mcap** — open [`submission-demo/run_submission.ipynb`](submission-demo/run_submission.ipynb), edit the **User configuration** cell:
 
@@ -42,9 +40,28 @@ Example submission artifacts: [`submission-files/`](submission-files/).
 
 ## 1. Environment
 
-Same as quick start above. Use Jupyter kernel **`pixel-racers`**. On Apple Silicon, SfM notebooks expect **MPS**.
+**Recommended:** run the setup script from the repo root:
 
-Optional real HF-Net ONNX: [`3d-map-test/models/README_HFNET.md`](3d-map-test/models/README_HFNET.md). The submission demo defaults to **`sp_nv_nn`** (SuperPoint + NetVLAD + mutual NN).
+```bash
+cd PixelRacers
+bash scripts/setup_pixel_racers_venv.sh
+source scripts/env.sh
+```
+
+This creates the virtualenv at **`pixel-racers/`** (gitignored), initializes **`third_party/Hierarchical-Localization`**, installs [`requirements.txt`](requirements.txt), and registers the Jupyter kernel **`pixel-racers`**.
+
+| Step | Manual equivalent |
+|------|-------------------|
+| Venv | `python3.12 -m venv pixel-racers && source pixel-racers/bin/activate` |
+| Submodule | `git submodule update --init --recursive` |
+| Deps | `python -m pip install -U pip && pip install -r requirements.txt` |
+| Kernel | `python -m ipykernel install --user --name pixel-racers --display-name "pixel-racers"` |
+
+On Apple Silicon, SfM notebooks expect **MPS**. Optional HF-Net ONNX: [`3d-map-test/models/README_HFNET.md`](3d-map-test/models/README_HFNET.md). Submission demo default backend: **`sp_nv_nn`** (SuperPoint + NetVLAD + mutual NN).
+
+### Third-party software and models
+
+PixelRacers depends on **hloc**, **LightGlue / SuperPoint**, **PyTorch**, **NetVLAD (Pitts30K weights)**, **OpenCV**, **mcap**, and other PyPI packages. Weights and licenses are summarized in **[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)** (standard third-party notices file). Review it before redistribution or publication.
 
 ### Git LFS (submission maps)
 
